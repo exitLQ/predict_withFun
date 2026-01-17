@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polymarket Analysis Tool</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Polymarket Analysis Tool</h1>
+            <p>Analysiere die Top-Märkte von Polymarket mit KI-Unterstützung</p>
+        </header>
+
+        <main>
+            <section class="category-section">
+                <label for="categorySelect">Kategorie auswählen:</label>
+                <select id="categorySelect">
+                    <option value="">Lade Kategorien...</option>
+                </select>
+                <button id="loadMarketsBtn" disabled>Märkte laden</button>
+                <button id="analyzeBtn" disabled>Analyse starten</button>
+            </section>
+
+            <section id="marketsSection" class="markets-section" style="display: none;">
+                <h2>Top 10 Märkte</h2>
+                <div id="marketsTableContainer"></div>
+            </section>
+
+            <section id="analysisSection" class="analysis-section" style="display: none;">
+                <h2>Analyse-Ergebnisse</h2>
+                <div id="analysisContent"></div>
+            </section>
+
+            <section id="loadingSection" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Lade Daten...</p>
+            </section>
+
+            <section id="errorSection" class="error" style="display: none;">
+                <p id="errorMessage"></p>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
