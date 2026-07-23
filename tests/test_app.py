@@ -22,9 +22,13 @@ def test_health_endpoint(monkeypatch):
     monkeypatch.delenv("REDIS_URL", raising=False)
     monkeypatch.delenv("BACKGROUND_QUEUE", raising=False)
 
-    response = client.get("/api/health")
+    response = client.get(
+        "/api/health",
+        headers={"X-Request-ID": "health-test-request"},
+    )
 
     assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == "health-test-request"
     assert response.json() == {
         "status": "ok",
         "openai_configured": False,

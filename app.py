@@ -1,6 +1,9 @@
+import logging
 import os
+import re
 import secrets
 import time
+import uuid
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -44,9 +47,16 @@ from polymarket_client import (
     fetch_price_history,
     get_top_markets_for_category,
 )
+from structured_logging import (
+    get_logger,
+    log_event,
+    reset_request_id,
+    set_request_id,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+logger = get_logger("http")
 
 app = FastAPI(
     title="predict_withFun",
@@ -55,6 +65,45 @@ app = FastAPI(
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 _analysis_requests: dict[str, deque[float]] = defaultdict(deque)
+
+
+@app.middleware("http")
+async def request_logging(request: Request, call_next):
+    supplied = request.headers.get("X-Request-ID", "")
+    request_id = (
+        supplied
+        if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", supplied)
+        else str(uuid.uuid4())
+    )
+    token = set_request_id(request_id)
+    started_at = time.perf_counter()
+    try:
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 1)
+        log_event(
+            logger,
+            logging.INFO,
+            "http_request_completed",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
+        response.headers["X-Request-ID"] = request_id
+        return response
+    except Exception:
+        log_event(
+            logger,
+            logging.ERROR,
+            "http_request_failed",
+            method=request.method,
+            path=request.url.path,
+            status_code=500,
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
+        )
+        raise
+    finally:
+        reset_request_id(token)
 
 
 def _enforce_analysis_limit(request: Request) -> None:

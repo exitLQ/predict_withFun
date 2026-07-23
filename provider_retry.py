@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import time
@@ -5,6 +6,7 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from operations import record_retry
+from structured_logging import get_logger, log_event
 
 T = TypeVar("T")
 
@@ -13,6 +15,7 @@ _DEFAULTS = {
     "grok": (3, 1.0, 8.0),
     "claude": (2, 1.0, 6.0),
 }
+logger = get_logger("retry")
 
 
 def _number(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -76,5 +79,16 @@ def call_with_retry(
             else:
                 delay = min(server_delay, maximum_delay)
             record_retry(provider)
+            log_event(
+                logger,
+                logging.WARNING,
+                "provider_retry_scheduled",
+                provider=provider,
+                attempt=attempt + 1,
+                max_retries=max_retries,
+                delay_seconds=round(delay, 3),
+                error_type=type(error).__name__,
+                status_code=getattr(error, "status_code", None),
+            )
             sleep(delay)
     raise RuntimeError("Provider retry loop ended unexpectedly.")

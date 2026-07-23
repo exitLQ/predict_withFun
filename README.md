@@ -26,6 +26,7 @@ estimates side by side.
 - [Configuration](#configuration)
 - [Caching, fallback, and rate limits](#caching-fallback-and-rate-limits)
 - [Redis and background jobs](#redis-and-background-jobs)
+- [Structured logging](#structured-logging)
 - [Persistent analysis history](#persistent-analysis-history)
 - [Database migrations](#database-migrations)
 - [Admin dashboard](#admin-dashboard)
@@ -357,6 +358,8 @@ values supplied through environment variables.
 | `ANALYSIS_REQUESTS_PER_HOUR` | `5` | Maximum analysis requests per client IP and process |
 | `ENVIRONMENT` | `development` | Enables reload only when running `python app.py` in development |
 | `ADMIN_TOKEN` | `change-me` | Bearer token that protects admin metrics; required in production |
+| `LOG_FORMAT` | `json` | `json` for structured logs or `text` for local readability |
+| `LOG_LEVEL` | `INFO` | Python log threshold such as `DEBUG`, `INFO`, or `WARNING` |
 | `HOST` | `0.0.0.0` | Bind address when running `python app.py` |
 | `PORT` | `8000` | HTTP port |
 | `DATABASE_URL` | `sqlite:///./predict_withfun.db` | PostgreSQL or SQLite connection URL |
@@ -524,6 +527,37 @@ Then set:
 
 ```text
 REDIS_URL=redis://localhost:6379/0
+```
+
+## Structured logging
+
+Application events use the `predict_with_fun` logger hierarchy and write to
+standard error. `LOG_FORMAT=json` produces one compact JSON object per line for
+Render and other collectors. `LOG_FORMAT=text` provides a readable local
+format. Invalid `LOG_LEVEL` values safely fall back to `INFO`.
+
+Every HTTP response includes `X-Request-ID`. A caller-supplied ID is retained
+only when it contains 1–64 letters, digits, dots, underscores, or hyphens;
+otherwise the server generates a UUID. Request logs contain the UTC timestamp,
+level, logger, event, request ID, method, path without query string, response
+status, and duration.
+
+Provider logs contain only operational metadata such as provider, fallback
+state, market count, duration, retry attempt, delay, status code, and exception
+type. Job logs use opaque IDs and task names. Scheduled resolution logs contain
+only aggregate checked, resolved, and scored counts.
+
+Fields whose names contain `authorization`, `password`, `secret`, `token`,
+`api_key`, `apikey`, or `credential` are recursively replaced with
+`[REDACTED]`. Logged strings and collections are bounded. The application does
+not log API keys, bearer headers, query strings, prompt bodies, market
+descriptions, research content, AI output, connection URLs, or background-job
+exception messages.
+
+Example:
+
+```json
+{"timestamp":"2026-07-23T12:00:00+00:00","level":"INFO","logger":"predict_with_fun.http","event":"http_request_completed","request_id":"a1b2","method":"GET","path":"/api/health","status_code":200,"duration_ms":4.2}
 ```
 
 ## Persistent analysis history
@@ -1142,6 +1176,7 @@ The test suite covers:
 - persistent history round trips and skipped demo/cache records;
 - resolution parsing, Brier scoring, and provider accuracy summaries;
 - scheduled resolution CLI argument validation and JSON output;
+- structured JSON context, request IDs, and recursive secret redaction;
 - provider weighting, consensus probabilities, and disagreement classification;
 - URL canonicalization, deduplication, source classification, and ranking.
 - prompt framing, control-character cleanup, boundary filtering, and output limits;
@@ -1265,6 +1300,7 @@ are shared. Also consider:
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
 ├── provider_retry.py        # Provider-specific transient-error backoff
 ├── resolution_sync.py       # One-shot automatic resolution CLI
+├── structured_logging.py    # JSON events, request context, and redaction
 ├── source_quality.py        # Source normalization and quality rules
 ├── static/
 │   ├── index.html           # Application markup
@@ -1360,6 +1396,13 @@ are shared. Also consider:
 - honors numeric `Retry-After` guidance and records retry metrics;
 - immediately re-raises permanent failures.
 
+`structured_logging.py`:
+
+- configures JSON or readable text output without another dependency;
+- propagates request IDs through async request context;
+- recursively redacts sensitive field names and bounds logged values;
+- provides consistent event helpers for HTTP, providers, jobs, and cron.
+
 `synthesis.py`:
 
 - derives provider weights from resolved forecast accuracy;
@@ -1395,6 +1438,7 @@ The frontend uses browser-native APIs only. It:
 - Pydantic validates outbound API data.
 - AI analysis requests are rate limited.
 - External strings and AI output are inserted as text rather than executable HTML.
+- Structured logs omit prompts and research content and redact sensitive fields.
 - External links use `noopener noreferrer`.
 - The production container runs without root privileges.
 - No application user account, personal profile, or server-side watchlist is stored.

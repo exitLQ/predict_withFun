@@ -1,9 +1,13 @@
 import argparse
 import json
+import logging
 import os
 from typing import Sequence
 
 from job_tasks import run_accuracy_sync_task
+from structured_logging import get_logger, log_event
+
+logger = get_logger("resolution")
 
 
 def _default_limit() -> int:
@@ -28,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     result = run_accuracy_sync_task(args.limit)
+    log_event(logger, logging.INFO, "resolution_sync_completed", **result)
     print(json.dumps(result, sort_keys=True))
     return 0
 

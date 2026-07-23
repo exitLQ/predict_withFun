@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import uuid
@@ -11,10 +12,12 @@ from infrastructure import (
 )
 from models import JobStatus
 from operations import increment
+from structured_logging import get_logger, log_event
 
 _executor = ThreadPoolExecutor(max_workers=int(os.getenv("LOCAL_JOB_WORKERS", "3")))
 _futures: dict[str, Future] = {}
 _created_at: dict[str, float] = {}
+logger = get_logger("jobs")
 
 
 def _purge_expired_local_jobs() -> None:
@@ -39,9 +42,17 @@ def _run_local(
         result = function(*args)
         status = {"id": job_id, "status": "finished", "result": result}
         increment("jobs_finished")
+        log_event(logger, logging.INFO, "job_finished", job_id=job_id)
     except Exception as exc:
         status = {"id": job_id, "status": "failed", "error": str(exc)}
         increment("jobs_failed")
+        log_event(
+            logger,
+            logging.ERROR,
+            "job_failed",
+            job_id=job_id,
+            error_type=type(exc).__name__,
+        )
     store_job_status(job_id, status)
     return status
 
@@ -62,6 +73,14 @@ def submit_job(
             job_timeout=int(os.getenv("JOB_TIMEOUT", "600")),
             result_ttl=int(os.getenv("JOB_RESULT_TTL", "3600")),
         )
+        log_event(
+            logger,
+            logging.INFO,
+            "job_queued",
+            job_id=job.id,
+            queue="rq",
+            task=function.__name__,
+        )
         return JobStatus(id=job.id, status="queued")
 
     job_id = str(uuid.uuid4())
@@ -69,6 +88,14 @@ def submit_job(
     store_job_status(job_id, initial)
     _created_at[job_id] = time.monotonic()
     _futures[job_id] = _executor.submit(_run_local, job_id, function, args)
+    log_event(
+        logger,
+        logging.INFO,
+        "job_queued",
+        job_id=job_id,
+        queue="local",
+        task=function.__name__,
+    )
     return JobStatus(**initial)
 
 

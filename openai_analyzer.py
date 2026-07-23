@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import time
@@ -17,6 +18,7 @@ from models import AnalysisResult, Market, MarketAnalysis, Source, UsageInfo
 from operations import increment, record_provider
 from provider_retry import call_with_retry
 from source_quality import assess_source
+from structured_logging import get_logger, log_event
 
 load_dotenv()
 
@@ -42,6 +44,7 @@ markets and return only the required structured analysis.
 """.strip()
 PROVIDERS = ("openai", "grok", "claude")
 _analysis_cache: dict[str, tuple[float, AnalysisResult]] = {}
+logger = get_logger("provider")
 
 
 class AIUnavailableError(RuntimeError):
@@ -503,8 +506,17 @@ def analyze_markets(
         try:
             started_at = time.perf_counter()
             result = _analyze_provider(markets, category, candidate)
-            record_provider(
-                candidate, (time.perf_counter() - started_at) * 1000, True
+            duration_ms = (time.perf_counter() - started_at) * 1000
+            record_provider(candidate, duration_ms, True)
+            log_event(
+                logger,
+                logging.INFO,
+                "provider_analysis_completed",
+                provider=candidate,
+                requested_provider=provider,
+                fallback_used=candidate != provider,
+                market_count=len(markets),
+                duration_ms=round(duration_ms, 1),
             )
             result.requested_provider = provider
             result.fallback_used = candidate != provider
@@ -516,8 +528,16 @@ def analyze_markets(
             )
             return result
         except AIUnavailableError as exc:
-            record_provider(
-                candidate, (time.perf_counter() - started_at) * 1000, False
+            duration_ms = (time.perf_counter() - started_at) * 1000
+            record_provider(candidate, duration_ms, False)
+            log_event(
+                logger,
+                logging.WARNING,
+                "provider_analysis_failed",
+                provider=candidate,
+                requested_provider=provider,
+                error_type=type(exc).__name__,
+                duration_ms=round(duration_ms, 1),
             )
             last_error = exc
     if last_error:
