@@ -99,6 +99,7 @@ estimates side by side.
 - FastAPI backend with validated Pydantic response models
 - Interactive OpenAPI documentation
 - Automated tests and Ruff linting
+- Offline contract tests for every provider SDK integration
 - GitHub Actions continuous integration
 - Docker and Render deployment configuration
 - Non-root production container
@@ -1342,6 +1343,7 @@ The test suite covers:
 - demo comparison for all providers;
 - Polymarket parsing;
 - OpenAI, Grok, and Claude provider selection in demo mode;
+- fully mocked OpenAI, Grok, and Claude SDK request/response contracts;
 - analysis-cache behavior;
 - automatic fallback;
 - usage and cost calculation;
@@ -1353,13 +1355,37 @@ The test suite covers:
 - password/session round trips, CSRF validation, and protected-route policy;
 - CSP/security headers, HSTS behavior, and trusted-host rejection;
 - provider weighting, consensus probabilities, and disagreement classification;
-- URL canonicalization, deduplication, source classification, and ranking.
+- URL canonicalization, deduplication, source classification, and ranking;
 - prompt framing, control-character cleanup, boundary filtering, and output limits;
 - Redis-backed cache/status operations and local background-job completion.
 
 GitHub Actions installs `requirements-dev.txt`, runs Ruff, and executes pytest
 on every configured workflow trigger. A red workflow means at least one lint
 or test step failed; expand the failing step in the Actions run for details.
+
+### Mocked provider API contracts
+
+`tests/test_provider_contracts.py` exercises every live provider path without
+DNS, HTTP requests, credentials, or billable API calls.
+
+The OpenAI contract verifies the API key and base URL, configured model,
+reasoning effort, `web_search`, source inclusion, structured-output class,
+untrusted-data boundary, parsed probabilities, normalized assessment, canonical
+sources, and usage. The Grok contract verifies the xAI-compatible base URL,
+configured model, `x_search`, prompt-cache key, and absence of OpenAI-only
+options.
+
+The Claude contract replaces the imported Anthropic module with a deterministic
+fake. It verifies the configured model, `web_search_20250305`, three-search
+limit, structured output, continuation after `pause_turn`, assistant
+continuation messages, and server-reported search usage.
+
+A failing OpenAI-compatible client confirms that private connection details are
+translated to the stable public `AIUnavailableError` message. Separate retry
+tests cover retry classification, `Retry-After`, bounds, and metrics. These
+tests protect integration contracts during SDK/model upgrades, but they do not
+prove that an external provider is online or that a real key can access a
+particular model.
 
 ## Deployment
 
