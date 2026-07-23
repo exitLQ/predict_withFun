@@ -67,6 +67,16 @@ def initialize_database() -> None:
         _initialized_urls.add(database_url)
 
 
+def database_is_available() -> bool:
+    try:
+        initialize_database()
+        with _connection() as connection:
+            connection.execute("SELECT 1").fetchone()
+        return True
+    except Exception:
+        return False
+
+
 def admin_database_statistics() -> dict[str, Any]:
     initialize_database()
     with _connection() as connection:

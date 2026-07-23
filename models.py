@@ -184,6 +184,15 @@ class HealthResponse(BaseModel):
     demo_mode: bool
 
 
+class ReadinessResponse(BaseModel):
+    status: Literal["ready", "degraded", "unavailable"]
+    database: bool
+    redis_configured: bool
+    redis_available: bool
+    redis_required: bool
+    sentry_configured: bool
+
+
 class ProviderAdminMetrics(BaseModel):
     provider: Literal["openai", "grok", "claude"]
     calls: int = Field(ge=0)

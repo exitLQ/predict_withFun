@@ -9,19 +9,24 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from database import (
     accuracy_summaries,
     admin_database_statistics,
     calibration_series,
+    database_is_available,
     get_analysis,
     list_analyses,
     list_forecast_scores,
     save_analysis,
 )
-from infrastructure import distributed_rate_limit_allowed, redis_client
+from infrastructure import (
+    distributed_rate_limit_allowed,
+    redis_client,
+    redis_is_available,
+)
 from job_queue import get_job_status, submit_job
 from job_tasks import run_accuracy_sync_task, run_comparison_task
 from models import (
@@ -37,8 +42,10 @@ from models import (
     Market,
     PricePoint,
     ProviderComparison,
+    ReadinessResponse,
     ResolutionSyncResult,
 )
+from monitoring import initialize_monitoring, monitoring_enabled
 from openai_analyzer import AIUnavailableError, analyze_markets
 from operations import increment, metrics_snapshot
 from polymarket_client import (
@@ -57,6 +64,7 @@ from structured_logging import (
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 logger = get_logger("http")
+initialize_monitoring()
 
 app = FastAPI(
     title="predict_withFun",
@@ -165,6 +173,35 @@ async def health() -> HealthResponse:
             and os.getenv("DEMO_MODE", "true").casefold() == "true"
         ),
     )
+
+
+@app.get(
+    "/api/ready",
+    response_model=ReadinessResponse,
+    responses={503: {"model": ReadinessResponse}},
+)
+async def readiness() -> ReadinessResponse | JSONResponse:
+    database_ready = await run_in_threadpool(database_is_available)
+    redis_configured = bool(os.getenv("REDIS_URL"))
+    redis_ready = (
+        await run_in_threadpool(redis_is_available) if redis_configured else False
+    )
+    redis_required = os.getenv("BACKGROUND_QUEUE", "local") == "rq"
+    unavailable = not database_ready or (redis_required and not redis_ready)
+    degraded = redis_configured and not redis_ready
+    result = ReadinessResponse(
+        status=(
+            "unavailable" if unavailable else "degraded" if degraded else "ready"
+        ),
+        database=database_ready,
+        redis_configured=redis_configured,
+        redis_available=redis_ready,
+        redis_required=redis_required,
+        sentry_configured=monitoring_enabled(),
+    )
+    if unavailable:
+        return JSONResponse(status_code=503, content=result.model_dump(mode="json"))
+    return result
 
 
 def _authorize_admin(request: Request) -> None:

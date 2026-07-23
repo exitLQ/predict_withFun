@@ -32,6 +32,16 @@ def redis_client() -> Any | None:
     return _redis_client
 
 
+def redis_is_available() -> bool:
+    client = redis_client()
+    if client is None:
+        return False
+    try:
+        return bool(client.ping())
+    except Exception:
+        return False
+
+
 def shared_cache_get(key: str) -> dict[str, Any] | None:
     client = redis_client()
     if client is None:

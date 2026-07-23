@@ -27,6 +27,7 @@ estimates side by side.
 - [Caching, fallback, and rate limits](#caching-fallback-and-rate-limits)
 - [Redis and background jobs](#redis-and-background-jobs)
 - [Structured logging](#structured-logging)
+- [Monitoring and error tracking](#monitoring-and-error-tracking)
 - [Persistent analysis history](#persistent-analysis-history)
 - [Database migrations](#database-migrations)
 - [Admin dashboard](#admin-dashboard)
@@ -360,6 +361,11 @@ values supplied through environment variables.
 | `ADMIN_TOKEN` | `change-me` | Bearer token that protects admin metrics; required in production |
 | `LOG_FORMAT` | `json` | `json` for structured logs or `text` for local readability |
 | `LOG_LEVEL` | `INFO` | Python log threshold such as `DEBUG`, `INFO`, or `WARNING` |
+| `SENTRY_DSN` | — | Enables optional server-side Sentry reporting |
+| `SENTRY_ENVIRONMENT` | `development` | Sentry environment label |
+| `SENTRY_RELEASE` | — | Optional deployed release or commit identifier |
+| `SENTRY_TRACES_SAMPLE_RATE` | `0.1` | Fraction of performance traces from 0 to 1 |
+| `SENTRY_PROFILES_SAMPLE_RATE` | `0` | Fraction of profiles from 0 to 1 |
 | `HOST` | `0.0.0.0` | Bind address when running `python app.py` |
 | `PORT` | `8000` | HTTP port |
 | `DATABASE_URL` | `sqlite:///./predict_withfun.db` | PostgreSQL or SQLite connection URL |
@@ -559,6 +565,37 @@ Example:
 ```json
 {"timestamp":"2026-07-23T12:00:00+00:00","level":"INFO","logger":"predict_with_fun.http","event":"http_request_completed","request_id":"a1b2","method":"GET","path":"/api/health","status_code":200,"duration_ms":4.2}
 ```
+
+## Monitoring and error tracking
+
+Set `SENTRY_DSN` to enable the pinned Sentry Python SDK and its FastAPI
+integration. With no DSN, initialization is skipped and the application keeps
+working without outbound monitoring traffic. Environment and release labels
+support deployment comparison; trace and profile sample rates are clamped to
+the range 0–1.
+
+Privacy defaults are intentionally strict: `send_default_pii` is disabled, and
+a final `before_send` scrubber removes user data, request headers, cookies,
+query strings, request bodies, request environment data, breadcrumb data, and
+the entire extra-data object. Exceptions and stack locations remain available
+for diagnosis, but prompts and research content should never be manually
+attached to Sentry events.
+
+Two health routes serve different purposes:
+
+- `/api/health` is a cheap liveness check. It confirms that the process can
+  answer and reports configuration flags without contacting dependencies.
+- `/api/ready` probes the database and configured Redis service. Database
+  failure returns `503`. Redis failure returns `503` only when
+  `BACKGROUND_QUEUE=rq`; in local queue mode the response remains `200` with
+  `status: degraded` because the application can use local fallbacks.
+
+Render uses `/api/ready` for its deployment health check. The readiness body
+reports booleans only and never includes DSNs, connection URLs, credentials, or
+exception messages. Configure Sentry alert rules in the Sentry dashboard for
+new issues, error-rate spikes, and latency thresholds. See the
+[Sentry Python documentation](https://docs.sentry.io/platforms/python/) and
+[Render health-check documentation](https://render.com/docs/health-checks).
 
 ## Persistent analysis history
 
@@ -822,6 +859,18 @@ curl http://localhost:8000/api/health
 
 The endpoint confirms that keys exist; it does not make paid provider requests
 or validate the keys.
+
+### `GET /api/ready`
+
+Checks operational dependencies and returns `ready`, `degraded`, or
+`unavailable`. An unavailable database, or unavailable Redis while RQ is
+required, returns HTTP `503`.
+
+```bash
+curl http://localhost:8000/api/ready
+```
+
+The response exposes only dependency booleans and whether Sentry initialized.
 
 ### `GET /api/admin/metrics`
 
@@ -1177,6 +1226,7 @@ The test suite covers:
 - resolution parsing, Brier scoring, and provider accuracy summaries;
 - scheduled resolution CLI argument validation and JSON output;
 - structured JSON context, request IDs, and recursive secret redaction;
+- readiness dependency behavior and outbound monitoring privacy scrubbing;
 - provider weighting, consensus probabilities, and disagreement classification;
 - URL canonicalization, deduplication, source classification, and ranking.
 - prompt framing, control-character cleanup, boundary filtering, and output limits;
@@ -1247,9 +1297,11 @@ The included `render.yaml` defines a Docker web service named
 6. Confirm that `/api/health` returns `status: ok`.
 
 The Blueprint configures PostgreSQL, a private Render Key Value instance,
-default models, cache TTL, provider fallback, the health-check path, and the
+default models, cache TTL, provider fallback, the `/api/ready` health-check path,
+optional Sentry settings, and the
 daily resolution run at `03:17 UTC`. API keys use `sync: false` and must be
-entered in Render. Render cron jobs are paid services (currently with a minimum
+entered in Render. `SENTRY_DSN` also uses `sync: false`; leave it empty to
+disable error reporting. Render cron jobs are paid services (currently with a minimum
 monthly charge), so review the current Render pricing before applying the
 Blueprint. Remove the `type: cron` block if you prefer another scheduler.
 
@@ -1295,6 +1347,7 @@ are shared. Also consider:
 ├── models.py                # Pydantic request and response models
 ├── migrate.py               # Programmatic Alembic upgrade command
 ├── migrations/              # Versioned database schema changes
+├── monitoring.py            # Optional Sentry initialization and privacy scrubber
 ├── openai_analyzer.py       # All AI providers, cache, fallback, and costs
 ├── operations.py            # Thread-safe process runtime metrics
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
@@ -1403,6 +1456,13 @@ are shared. Also consider:
 - recursively redacts sensitive field names and bounds logged values;
 - provides consistent event helpers for HTTP, providers, jobs, and cron.
 
+`monitoring.py`:
+
+- initializes Sentry only when a DSN is configured;
+- bounds trace/profile sampling and attaches environment/release metadata;
+- removes request, user, breadcrumb, and extra data before transmission;
+- fails open so monitoring outages do not prevent application startup.
+
 `synthesis.py`:
 
 - derives provider weights from resolved forecast accuracy;
@@ -1439,6 +1499,7 @@ The frontend uses browser-native APIs only. It:
 - AI analysis requests are rate limited.
 - External strings and AI output are inserted as text rather than executable HTML.
 - Structured logs omit prompts and research content and redact sensitive fields.
+- Sentry disables default PII and applies a final outbound event scrubber.
 - External links use `noopener noreferrer`.
 - The production container runs without root privileges.
 - No application user account, personal profile, or server-side watchlist is stored.

@@ -70,6 +70,31 @@ def test_admin_endpoint_requires_configured_token(monkeypatch):
     assert authorized.json()["stored_analyses"] == 0
 
 
+def test_readiness_reports_optional_redis_as_degraded(monkeypatch):
+    monkeypatch.setenv("REDIS_URL", "redis://unavailable")
+    monkeypatch.setenv("BACKGROUND_QUEUE", "local")
+    monkeypatch.setattr(app, "database_is_available", lambda: True)
+    monkeypatch.setattr(app, "redis_is_available", lambda: False)
+
+    response = client.get("/api/ready")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+    assert response.json()["redis_required"] is False
+
+
+def test_readiness_requires_redis_for_rq(monkeypatch):
+    monkeypatch.setenv("REDIS_URL", "redis://unavailable")
+    monkeypatch.setenv("BACKGROUND_QUEUE", "rq")
+    monkeypatch.setattr(app, "database_is_available", lambda: True)
+    monkeypatch.setattr(app, "redis_is_available", lambda: False)
+
+    response = client.get("/api/ready")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "unavailable"
+
+
 def test_admin_endpoint_is_disabled_without_token_in_production(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.delenv("ADMIN_TOKEN", raising=False)
