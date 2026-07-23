@@ -318,6 +318,7 @@ async function loadAdminDashboard() {
         <div class="comparison-facts">
           <div><span>Runtime calls</span><strong>${provider.calls}</strong></div>
           <div><span>Success / failure</span><strong>${provider.successes} / ${provider.failures}</strong></div>
+          <div><span>Retries</span><strong>${provider.retries}</strong></div>
           <div><span>Average latency</span><strong>${provider.average_duration_ms.toFixed(1)} ms</strong></div>
           <div><span>Stored analyses</span><strong>${provider.stored_analyses}</strong></div>
           <div><span>Estimated spend</span><strong>$${provider.estimated_cost_usd.toFixed(4)}</strong></div>

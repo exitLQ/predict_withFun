@@ -189,6 +189,7 @@ class ProviderAdminMetrics(BaseModel):
     calls: int = Field(ge=0)
     successes: int = Field(ge=0)
     failures: int = Field(ge=0)
+    retries: int = Field(ge=0)
     average_duration_ms: float = Field(ge=0)
     stored_analyses: int = Field(ge=0)
     estimated_cost_usd: float = Field(ge=0)

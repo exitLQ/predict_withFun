@@ -160,6 +160,7 @@ async def admin_metrics(request: Request) -> AdminMetrics:
                 "calls": runtime.get("calls", 0),
                 "successes": runtime.get("successes", 0),
                 "failures": runtime.get("failures", 0),
+                "retries": runtime.get("retries", 0),
                 "average_duration_ms": runtime.get("average_duration_ms", 0),
                 "stored_analyses": durable.get("stored_analyses", 0),
                 "estimated_cost_usd": durable.get("estimated_cost_usd", 0),

@@ -330,6 +330,23 @@ Changing a model may require updating its cost variables. The replacement
 model must support the structured-output and research tools used by the
 application.
 
+### Provider retry configuration
+
+| Variable | Default | Description |
+| --- | ---: | --- |
+| `OPENAI_MAX_RETRIES` | `2` | Additional attempts after a transient OpenAI failure |
+| `OPENAI_RETRY_BASE_DELAY` | `0.5` | Initial OpenAI backoff in seconds |
+| `OPENAI_RETRY_MAX_DELAY` | `4` | Maximum OpenAI wait in seconds |
+| `GROK_MAX_RETRIES` | `3` | Additional attempts after a transient Grok failure |
+| `GROK_RETRY_BASE_DELAY` | `1` | Initial Grok backoff in seconds |
+| `GROK_RETRY_MAX_DELAY` | `8` | Maximum Grok wait in seconds |
+| `CLAUDE_MAX_RETRIES` | `2` | Additional attempts after a transient Claude failure |
+| `CLAUDE_RETRY_BASE_DELAY` | `1` | Initial Claude backoff in seconds |
+| `CLAUDE_RETRY_MAX_DELAY` | `6` | Maximum Claude wait in seconds |
+
+Retry counts are clamped from 0 to 8 and delays from 0 to 60 seconds, including
+values supplied through environment variables.
+
 ### Application behavior
 
 | Variable | Default | Description |
@@ -419,6 +436,25 @@ Important cache properties:
 
 ### Automatic provider fallback
 
+Before switching providers, predict_withFun retries temporary failures against
+the selected provider:
+
+- OpenAI uses two retries with a 0.5-second base and 4-second maximum delay.
+- Grok uses three retries with a 1-second base and 8-second maximum delay.
+- Claude uses two retries with a 1-second base and 6-second maximum delay.
+
+Exponential backoff includes bounded random jitter to avoid synchronized retry
+bursts. A valid numeric `Retry-After` response header takes precedence. HTTP
+`408`, `409`, `425`, `429`, and `5xx` responses plus SDK timeout and connection
+errors are retryable. Authentication, permission, malformed-request, and other
+permanent `4xx` errors fail immediately.
+
+`MAX_RETRIES` means additional attempts, so the OpenAI default allows up to
+three total calls. Retries can increase latency and may be billable if a
+provider processed a request before returning an error. Set a provider's
+maximum retries to `0` to disable its retries. The admin dashboard reports
+retry counts per process and provider.
+
 Fallback applies to normal category and single-market analyses. The order is:
 
 1. requested provider;
@@ -433,9 +469,10 @@ configured. The response exposes:
 
 Set `PROVIDER_FALLBACK=false` to disable this behavior.
 
-Fallback handles provider rate limits, connection errors, and API status
-errors that are converted to `AIUnavailableError`. It does not hide invalid
-application requests or Polymarket errors.
+Fallback begins only after the selected provider exhausts its retry policy.
+Provider rate limits, connection errors, and API status errors are then
+converted to `AIUnavailableError`. Fallback does not hide invalid application
+requests or Polymarket errors.
 
 ### Request limiting
 
@@ -1226,6 +1263,7 @@ are shared. Also consider:
 ├── openai_analyzer.py       # All AI providers, cache, fallback, and costs
 ├── operations.py            # Thread-safe process runtime metrics
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
+├── provider_retry.py        # Provider-specific transient-error backoff
 ├── resolution_sync.py       # One-shot automatic resolution CLI
 ├── source_quality.py        # Source normalization and quality rules
 ├── static/
@@ -1276,6 +1314,7 @@ are shared. Also consider:
 `operations.py`:
 
 - records process-local cache, provider, request, and job counters;
+- records retry counts for each provider;
 - calculates cache-hit rate and provider average latency;
 - exposes only aggregated, non-sensitive operational data.
 
@@ -1313,6 +1352,13 @@ are shared. Also consider:
 - calculates usage and estimated cost;
 - caches analysis results;
 - applies provider fallback.
+
+`provider_retry.py`:
+
+- classifies transient status, rate-limit, timeout, and connection failures;
+- applies bounded provider-specific exponential backoff and jitter;
+- honors numeric `Retry-After` guidance and records retry metrics;
+- immediately re-raises permanent failures.
 
 `synthesis.py`:
 

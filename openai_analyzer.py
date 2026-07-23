@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from infrastructure import shared_cache_get, shared_cache_set
 from models import AnalysisResult, Market, MarketAnalysis, Source, UsageInfo
 from operations import increment, record_provider
+from provider_retry import call_with_retry
 from source_quality import assess_source
 
 load_dotenv()
@@ -325,10 +326,17 @@ def _analyze_with_claude(
             ],
             "output_format": GeneratedAnalysis,
         }
-        response = client.messages.parse(**options)
+        response = call_with_retry(
+            "claude", lambda: client.messages.parse(**options)
+        )
         if response.stop_reason == "pause_turn":
             messages.append({"role": "assistant", "content": response.content})
-            response = client.messages.parse(**{**options, "messages": messages})
+            response = call_with_retry(
+                "claude",
+                lambda: client.messages.parse(
+                    **{**options, "messages": messages}
+                ),
+            )
         generated = response.parsed_output
         if generated is None:
             raise AIUnavailableError(
@@ -402,7 +410,9 @@ def _analyze_provider(
                 }
             else:
                 request_options["prompt_cache_key"] = "predict-with-fun-analysis"
-            response = client.responses.parse(**request_options)
+            response = call_with_retry(
+                provider, lambda: client.responses.parse(**request_options)
+            )
             generated = response.output_parsed
             if generated is None:
                 raise AIUnavailableError(

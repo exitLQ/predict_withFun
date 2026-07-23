@@ -6,7 +6,13 @@ from typing import Any
 _lock = threading.Lock()
 _counters: dict[str, int] = defaultdict(int)
 _provider_metrics: dict[str, dict[str, float | int]] = defaultdict(
-    lambda: {"calls": 0, "successes": 0, "failures": 0, "duration_ms": 0.0}
+    lambda: {
+        "calls": 0,
+        "successes": 0,
+        "failures": 0,
+        "retries": 0,
+        "duration_ms": 0.0,
+    }
 )
 
 
@@ -23,6 +29,11 @@ def record_provider(provider: str, duration_ms: float, success: bool) -> None:
         metrics["duration_ms"] += duration_ms
 
 
+def record_retry(provider: str) -> None:
+    with _lock:
+        _provider_metrics[provider]["retries"] += 1
+
+
 def metrics_snapshot() -> dict[str, Any]:
     with _lock:
         counters = dict(_counters)
@@ -31,6 +42,7 @@ def metrics_snapshot() -> dict[str, Any]:
                 "calls": int(values["calls"]),
                 "successes": int(values["successes"]),
                 "failures": int(values["failures"]),
+                "retries": int(values["retries"]),
                 "average_duration_ms": round(
                     float(values["duration_ms"]) / max(int(values["calls"]), 1),
                     1,
