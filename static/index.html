@@ -141,6 +141,31 @@
           <div class="empty-state">No resolved forecasts have been scored yet.</div>
         </div>
       </section>
+
+      <section class="comparison-section" aria-labelledby="adminHeading">
+        <div class="section-heading">
+          <div>
+            <p class="step">Operations / Authorized access</p>
+            <h2 id="adminHeading">Admin dashboard</h2>
+          </div>
+        </div>
+        <div class="admin-login">
+          <label class="tool-field" for="adminToken">
+            <span>Admin token</span>
+            <input id="adminToken" type="password" autocomplete="current-password"
+              placeholder="Required in production">
+          </label>
+          <button class="button-primary" id="loadAdmin">Load dashboard</button>
+        </div>
+        <p class="admin-note">
+          The token is retained only for this browser tab. Runtime metrics reset
+          when the server process restarts.
+        </p>
+        <div id="adminDashboard" hidden>
+          <div id="adminStats" class="admin-stats"></div>
+          <div id="adminProviders" class="comparison-market-grid"></div>
+        </div>
+      </section>
     </main>
 
     <footer>

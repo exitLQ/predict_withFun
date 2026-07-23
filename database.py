@@ -65,6 +65,45 @@ def initialize_database() -> None:
         _initialized_urls.add(database_url)
 
 
+def admin_database_statistics() -> dict[str, Any]:
+    initialize_database()
+    with _connection() as connection:
+        history = connection.execute(
+            """
+            SELECT provider, COUNT(*), COALESCE(SUM(estimated_cost_usd), 0)
+            FROM analysis_history
+            GROUP BY provider
+            """
+        ).fetchall()
+        forecasts = connection.execute(
+            """
+            SELECT
+                COUNT(*),
+                COALESCE(
+                    SUM(CASE WHEN outcome IS NOT NULL THEN 1 ELSE 0 END),
+                    0
+                )
+            FROM forecast_scores
+            """
+        ).fetchone()
+    providers = {
+        str(row[0]): {
+            "stored_analyses": int(row[1]),
+            "estimated_cost_usd": float(row[2]),
+        }
+        for row in history
+    }
+    return {
+        "stored_analyses": sum(item["stored_analyses"] for item in providers.values()),
+        "estimated_cost_usd": sum(
+            item["estimated_cost_usd"] for item in providers.values()
+        ),
+        "total_forecasts": int(forecasts[0]),
+        "resolved_forecasts": int(forecasts[1]),
+        "providers": providers,
+    }
+
+
 def save_analysis(result: AnalysisResult) -> str | None:
     if result.demo or result.cached:
         return None

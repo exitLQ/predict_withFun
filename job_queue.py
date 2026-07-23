@@ -10,6 +10,7 @@ from infrastructure import (
     store_job_status,
 )
 from models import JobStatus
+from operations import increment
 
 _executor = ThreadPoolExecutor(max_workers=int(os.getenv("LOCAL_JOB_WORKERS", "3")))
 _futures: dict[str, Future] = {}
@@ -37,8 +38,10 @@ def _run_local(
     try:
         result = function(*args)
         status = {"id": job_id, "status": "finished", "result": result}
+        increment("jobs_finished")
     except Exception as exc:
         status = {"id": job_id, "status": "failed", "error": str(exc)}
+        increment("jobs_failed")
     store_job_status(job_id, status)
     return status
 
@@ -47,6 +50,7 @@ def submit_job(
     function: Callable[..., dict],
     *args: Any,
 ) -> JobStatus:
+    increment("jobs_queued")
     _purge_expired_local_jobs()
     client = redis_client()
     if client is not None and os.getenv("BACKGROUND_QUEUE", "local") == "rq":

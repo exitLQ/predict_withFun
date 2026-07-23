@@ -1,4 +1,5 @@
 import os
+import secrets
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -10,16 +11,18 @@ from fastapi.staticfiles import StaticFiles
 
 from database import (
     accuracy_summaries,
+    admin_database_statistics,
     get_analysis,
     list_analyses,
     list_forecast_scores,
     save_analysis,
 )
-from infrastructure import distributed_rate_limit_allowed
+from infrastructure import distributed_rate_limit_allowed, redis_client
 from job_queue import get_job_status, submit_job
 from job_tasks import run_accuracy_sync_task, run_comparison_task
 from models import (
     AccuracySummary,
+    AdminMetrics,
     AnalysisHistoryItem,
     AnalysisResult,
     Category,
@@ -32,6 +35,7 @@ from models import (
     ResolutionSyncResult,
 )
 from openai_analyzer import AIUnavailableError, analyze_markets
+from operations import increment, metrics_snapshot
 from polymarket_client import (
     PolymarketError,
     fetch_categories,
@@ -52,10 +56,12 @@ _analysis_requests: dict[str, deque[float]] = defaultdict(deque)
 
 
 def _enforce_analysis_limit(request: Request) -> None:
+    increment("analysis_requests")
     limit = int(os.getenv("ANALYSIS_REQUESTS_PER_HOUR", "5"))
     identity = request.client.host if request.client else "unknown"
     distributed = distributed_rate_limit_allowed(identity, limit)
     if distributed is False:
+        increment("rate_limited")
         raise HTTPException(
             status_code=429,
             detail=f"Analysis limit reached ({limit} per hour). Try again later.",
@@ -67,6 +73,7 @@ def _enforce_analysis_limit(request: Request) -> None:
     while requests and now - requests[0] > 3600:
         requests.popleft()
     if len(requests) >= limit:
+        increment("rate_limited")
         raise HTTPException(
             status_code=429,
             detail=f"Analysis limit reached ({limit} per hour). Try again later.",
@@ -106,6 +113,66 @@ async def health() -> HealthResponse:
             )
             and os.getenv("DEMO_MODE", "true").casefold() == "true"
         ),
+    )
+
+
+def _authorize_admin(request: Request) -> None:
+    configured_token = os.getenv("ADMIN_TOKEN", "")
+    production = os.getenv("ENVIRONMENT", "development").casefold() == "production"
+    if not configured_token:
+        if production:
+            raise HTTPException(
+                status_code=503,
+                detail="The admin dashboard is disabled until ADMIN_TOKEN is set.",
+            )
+        return
+    supplied = request.headers.get("Authorization", "")
+    expected = f"Bearer {configured_token}"
+    if not secrets.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="Invalid admin token.")
+
+
+@app.get("/api/admin/metrics", response_model=AdminMetrics)
+async def admin_metrics(request: Request) -> AdminMetrics:
+    _authorize_admin(request)
+    process = metrics_snapshot()
+    database_available = True
+    try:
+        stored = await run_in_threadpool(admin_database_statistics)
+    except Exception:
+        database_available = False
+        stored = {
+            "stored_analyses": 0,
+            "estimated_cost_usd": 0,
+            "total_forecasts": 0,
+            "resolved_forecasts": 0,
+            "providers": {},
+        }
+    providers = []
+    for provider in ("openai", "grok", "claude"):
+        runtime = process["providers"].get(provider, {})
+        durable = stored["providers"].get(provider, {})
+        providers.append(
+            {
+                "provider": provider,
+                "calls": runtime.get("calls", 0),
+                "successes": runtime.get("successes", 0),
+                "failures": runtime.get("failures", 0),
+                "average_duration_ms": runtime.get("average_duration_ms", 0),
+                "stored_analyses": durable.get("stored_analyses", 0),
+                "estimated_cost_usd": durable.get("estimated_cost_usd", 0),
+            }
+        )
+    return AdminMetrics(
+        **{key: value for key, value in process.items() if key != "providers"},
+        database_available=database_available,
+        redis_configured=bool(os.getenv("REDIS_URL")),
+        redis_available=redis_client() is not None,
+        background_queue=(
+            "rq" if os.getenv("BACKGROUND_QUEUE", "local") == "rq" else "local"
+        ),
+        providers=providers,
+        **{key: value for key, value in stored.items() if key != "providers"},
     )
 
 

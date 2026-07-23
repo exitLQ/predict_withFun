@@ -167,3 +167,34 @@ class HealthResponse(BaseModel):
     redis_configured: bool
     background_queue: Literal["local", "rq"]
     demo_mode: bool
+
+
+class ProviderAdminMetrics(BaseModel):
+    provider: Literal["openai", "grok", "claude"]
+    calls: int = Field(ge=0)
+    successes: int = Field(ge=0)
+    failures: int = Field(ge=0)
+    average_duration_ms: float = Field(ge=0)
+    stored_analyses: int = Field(ge=0)
+    estimated_cost_usd: float = Field(ge=0)
+
+
+class AdminMetrics(BaseModel):
+    generated_at: datetime
+    analysis_requests: int = Field(ge=0)
+    cache_hits: int = Field(ge=0)
+    cache_misses: int = Field(ge=0)
+    cache_hit_rate: float = Field(ge=0, le=1)
+    jobs_queued: int = Field(ge=0)
+    jobs_finished: int = Field(ge=0)
+    jobs_failed: int = Field(ge=0)
+    rate_limited: int = Field(ge=0)
+    database_available: bool
+    redis_configured: bool
+    redis_available: bool
+    background_queue: Literal["local", "rq"]
+    stored_analyses: int = Field(ge=0)
+    estimated_cost_usd: float = Field(ge=0)
+    total_forecasts: int = Field(ge=0)
+    resolved_forecasts: int = Field(ge=0)
+    providers: list[ProviderAdminMetrics]

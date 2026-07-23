@@ -28,6 +28,7 @@ estimates side by side.
 - [Redis and background jobs](#redis-and-background-jobs)
 - [Persistent analysis history](#persistent-analysis-history)
 - [Database migrations](#database-migrations)
+- [Admin dashboard](#admin-dashboard)
 - [Accuracy tracking](#accuracy-tracking)
 - [Provider synthesis](#provider-synthesis)
 - [Source quality assessment](#source-quality-assessment)
@@ -68,6 +69,7 @@ estimates side by side.
 - Caches identical analyses for 30 minutes by default
 - Shares cache entries, rate limits, and job status through Redis when configured
 - Runs provider comparisons and resolution checks as pollable background jobs
+- Provides a token-protected operations dashboard for cost, cache, jobs, and provider health
 - Shows whether a result came from the cache
 - Reports input tokens, output tokens, and detected search calls
 - Calculates an estimated USD cost for each new analysis
@@ -321,6 +323,7 @@ application.
 | `ANALYSIS_CACHE_TTL` | `1800` | Analysis-cache lifetime in seconds |
 | `ANALYSIS_REQUESTS_PER_HOUR` | `5` | Maximum analysis requests per client IP and process |
 | `ENVIRONMENT` | `development` | Enables reload only when running `python app.py` in development |
+| `ADMIN_TOKEN` | `change-me` | Bearer token that protects admin metrics; required in production |
 | `HOST` | `0.0.0.0` | Bind address when running `python app.py` |
 | `PORT` | `8000` | HTTP port |
 | `DATABASE_URL` | `sqlite:///./predict_withfun.db` | PostgreSQL or SQLite connection URL |
@@ -332,6 +335,27 @@ application.
 
 Boolean values are enabled only when their value is `true`, ignoring letter
 case.
+
+## Admin dashboard
+
+The **Admin dashboard** section reports operational information without
+exposing API keys, prompts, source contents, Redis URLs, or database URLs. Enter
+the `ADMIN_TOKEN` and select **Load dashboard** to view:
+
+- durable stored-analysis counts, forecast counts, and estimated provider cost;
+- process-local request, cache-hit, rate-limit, and background-job counters;
+- provider call success, failure, and average latency;
+- database availability and Redis/background-queue state.
+
+The browser keeps the token in `sessionStorage`, so it is removed when the tab
+session ends and is never persisted in `localStorage`. In production
+(`ENVIRONMENT=production`), the endpoint returns `503` until `ADMIN_TOKEN` is
+configured. An absent or incorrect bearer token returns `401`. Development
+allows token-free access only when no token is configured.
+
+Runtime counters are intentionally lightweight and process-local. They reset
+after a restart and are not combined across multiple web workers. Stored
+history and estimated cost come from the database and remain durable.
 
 ### Cost configuration
 
@@ -654,6 +678,21 @@ curl http://localhost:8000/api/health
 
 The endpoint confirms that keys exist; it does not make paid provider requests
 or validate the keys.
+
+### `GET /api/admin/metrics`
+
+Returns the protected operations snapshot. It never returns secrets,
+connection URLs, prompt text, or research content.
+
+```bash
+curl \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://localhost:8000/api/admin/metrics
+```
+
+The response includes `database_available`, Redis and queue state, durable
+analysis/cost totals, process-local cache and job counters, and per-provider
+call metrics.
 
 ### `GET /api/categories`
 
@@ -1093,6 +1132,7 @@ are shared. Also consider:
 ├── migrate.py               # Programmatic Alembic upgrade command
 ├── migrations/              # Versioned database schema changes
 ├── openai_analyzer.py       # All AI providers, cache, fallback, and costs
+├── operations.py            # Thread-safe process runtime metrics
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
 ├── source_quality.py        # Source normalization and quality rules
 ├── static/
@@ -1139,6 +1179,12 @@ are shared. Also consider:
 - reads and writes shared cache entries;
 - applies distributed rate limits;
 - stores expiring job status and results.
+
+`operations.py`:
+
+- records process-local cache, provider, request, and job counters;
+- calculates cache-hit rate and provider average latency;
+- exposes only aggregated, non-sensitive operational data.
 
 `job_queue.py` and `job_tasks.py`:
 
@@ -1267,6 +1313,13 @@ worker is running on the `predict_with_fun` queue. Use
 
 The application degrades to local cache, rate limiting, and background threads.
 Check `/api/health`, the Redis URL, network policy, and Redis service status.
+
+### Admin dashboard returns `401` or `503`
+
+`401` means the bearer token is absent or does not match `ADMIN_TOKEN`. `503`
+in production means `ADMIN_TOKEN` has not been configured. Add the secret to
+the deployment, restart the service, and load the dashboard with the same
+token. Do not place the token in source control or a public URL.
 
 ### Provider returns `503`
 

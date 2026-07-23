@@ -5,6 +5,16 @@ import app
 client = TestClient(app.app)
 
 
+def _empty_admin_statistics():
+    return {
+        "stored_analyses": 0,
+        "estimated_cost_usd": 0,
+        "total_forecasts": 0,
+        "resolved_forecasts": 0,
+        "providers": {},
+    }
+
+
 def test_health_endpoint(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)
@@ -37,6 +47,32 @@ def test_categories_endpoint(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()[0]["name"] == "Politics"
+
+
+def test_admin_endpoint_requires_configured_token(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("ADMIN_TOKEN", "secret-token")
+    monkeypatch.setattr(app, "admin_database_statistics", _empty_admin_statistics)
+    monkeypatch.setattr(app, "redis_client", lambda: None)
+
+    unauthorized = client.get("/api/admin/metrics")
+    authorized = client.get(
+        "/api/admin/metrics",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    assert unauthorized.status_code == 401
+    assert authorized.status_code == 200
+    assert authorized.json()["stored_analyses"] == 0
+
+
+def test_admin_endpoint_is_disabled_without_token_in_production(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("ADMIN_TOKEN", raising=False)
+
+    response = client.get("/api/admin/metrics")
+
+    assert response.status_code == 503
 
 
 def test_compare_endpoint_returns_all_demo_providers(monkeypatch):

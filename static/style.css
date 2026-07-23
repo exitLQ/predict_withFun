@@ -173,6 +173,13 @@ blockquote { margin: 12px 0 30px; padding: 24px 28px; background: var(--lime); c
 .analysis-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .comparison-section { border-top: 1px solid var(--line); padding: 48px 0 64px; }
 .comparison-market-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.admin-login { display: grid; grid-template-columns: minmax(240px, 420px) auto; gap: 12px; align-items: end; }
+.admin-login .button-primary { min-height: 48px; }
+.admin-note { margin: 12px 0 24px; color: var(--muted); font-size: 11px; }
+.admin-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; }
+.admin-stats div { display: grid; gap: 8px; padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.admin-stats span { color: var(--muted); font-size: 11px; }
+.admin-stats strong { font: 500 16px "DM Mono", monospace; overflow-wrap: anywhere; }
 .comparison-market { border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 24px; }
 .comparison-market h3 { min-height: 74px; margin: 12px 0 24px; font-size: 17px; line-height: 1.45; }
 .comparison-label { color: var(--lime); font: 10px "DM Mono", monospace; text-transform: uppercase; }
@@ -239,6 +246,7 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
   .card-actions { grid-column: 2 / -1; justify-content: flex-start; }
   .analysis-grid { grid-template-columns: 1fr; }
   .comparison-market-grid { grid-template-columns: 1fr; }
+  .admin-stats { grid-template-columns: repeat(2, 1fr); }
   .provider-comparison { grid-template-columns: 1fr; }
   .synthesis-grid { grid-template-columns: 1fr; }
 }
@@ -253,6 +261,7 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
   .tool-search, .export-actions { grid-column: auto; }
   .button-primary { grid-column: auto; }
   .section-heading { align-items: stretch; flex-direction: column; }
+  .admin-login, .admin-stats { grid-template-columns: 1fr; }
   .stats { grid-template-columns: 1fr; }
   .stats div { border-right: 0; border-bottom: 1px solid var(--line); }
   .market-card { grid-template-columns: 28px 1fr; }

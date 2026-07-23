@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from infrastructure import shared_cache_get, shared_cache_set
 from models import AnalysisResult, Market, MarketAnalysis, Source, UsageInfo
+from operations import increment, record_provider
 from source_quality import assess_source
 
 load_dotenv()
@@ -208,18 +209,22 @@ def _cache_key(markets: list[Market], category: str, provider: str) -> str:
 def _cached_result(key: str) -> AnalysisResult | None:
     shared = shared_cache_get(key)
     if shared:
+        increment("cache_hits")
         result = AnalysisResult.model_validate(shared)
         result.cached = True
         result.usage.estimated_cost_usd = 0
         return result
     cached = _analysis_cache.get(key)
     if not cached:
+        increment("cache_misses")
         return None
     created_at, result = cached
     if time.monotonic() - created_at > int(os.getenv("ANALYSIS_CACHE_TTL", "1800")):
         _analysis_cache.pop(key, None)
+        increment("cache_misses")
         return None
     result = deepcopy(result)
+    increment("cache_hits")
     result.cached = True
     result.usage.estimated_cost_usd = 0
     return result
@@ -451,7 +456,11 @@ def analyze_markets(
             cached.fallback_used = candidate != provider
             return cached
         try:
+            started_at = time.perf_counter()
             result = _analyze_provider(markets, category, candidate)
+            record_provider(
+                candidate, (time.perf_counter() - started_at) * 1000, True
+            )
             result.requested_provider = provider
             result.fallback_used = candidate != provider
             _analysis_cache[key] = (time.monotonic(), deepcopy(result))
@@ -462,6 +471,9 @@ def analyze_markets(
             )
             return result
         except AIUnavailableError as exc:
+            record_provider(
+                candidate, (time.perf_counter() - started_at) * 1000, False
+            )
             last_error = exc
     if last_error:
         raise last_error

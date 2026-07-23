@@ -43,6 +43,8 @@ $("clearComparison").addEventListener("click", () => {
   applyMarketFilters();
 });
 $("syncAccuracy").addEventListener("click", syncAccuracy);
+$("loadAdmin").addEventListener("click", loadAdminDashboard);
+$("adminToken").value = sessionStorage.getItem("predict_withFun.adminToken") || "";
 
 async function initialize() {
   await Promise.allSettled([checkHealth(), loadCategories(), loadAccuracy()]);
@@ -138,6 +140,63 @@ async function syncAccuracy() {
   } finally {
     button.disabled = false;
     button.textContent = "Check resolutions";
+  }
+}
+
+async function loadAdminDashboard() {
+  const button = $("loadAdmin");
+  const token = $("adminToken").value.trim();
+  if (token) sessionStorage.setItem("predict_withFun.adminToken", token);
+  else sessionStorage.removeItem("predict_withFun.adminToken");
+  button.disabled = true;
+  button.textContent = "Loading …";
+  try {
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const metrics = await api("/admin/metrics", { headers });
+    const infrastructure = metrics.redis_configured
+      ? (metrics.redis_available ? `Redis · ${metrics.background_queue.toUpperCase()}` : "Redis unavailable")
+      : `Local · ${metrics.background_queue.toUpperCase()}`;
+    const stats = [
+      ["Stored analyses", metrics.stored_analyses],
+      ["Estimated spend", `$${metrics.estimated_cost_usd.toFixed(4)}`],
+      ["Cache hit rate", `${(metrics.cache_hit_rate * 100).toFixed(1)}%`],
+      ["Jobs", `${metrics.jobs_finished} done · ${metrics.jobs_failed} failed`],
+      ["Rate limited", metrics.rate_limited],
+      ["Infrastructure", infrastructure],
+    ];
+    $("adminStats").replaceChildren(...stats.map(([label, value]) => {
+      const item = document.createElement("div");
+      const name = document.createElement("span");
+      const amount = document.createElement("strong");
+      name.textContent = label;
+      amount.textContent = value;
+      item.append(name, amount);
+      return item;
+    }));
+    $("adminProviders").replaceChildren(...metrics.providers.map((provider) => {
+      const card = document.createElement("article");
+      card.className = "comparison-market";
+      card.innerHTML = `
+        <span class="comparison-label">Provider</span>
+        <h3></h3>
+        <div class="comparison-facts">
+          <div><span>Runtime calls</span><strong>${provider.calls}</strong></div>
+          <div><span>Success / failure</span><strong>${provider.successes} / ${provider.failures}</strong></div>
+          <div><span>Average latency</span><strong>${provider.average_duration_ms.toFixed(1)} ms</strong></div>
+          <div><span>Stored analyses</span><strong>${provider.stored_analyses}</strong></div>
+          <div><span>Estimated spend</span><strong>$${provider.estimated_cost_usd.toFixed(4)}</strong></div>
+        </div>`;
+      card.querySelector("h3").textContent = provider.provider;
+      return card;
+    }));
+    $("adminDashboard").hidden = false;
+    showNotice("Admin metrics loaded.", "success", 2400);
+  } catch (error) {
+    $("adminDashboard").hidden = true;
+    showNotice(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Load dashboard";
   }
 }
 
