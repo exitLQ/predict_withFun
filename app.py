@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from database import (
     accuracy_summaries,
     admin_database_statistics,
+    calibration_series,
     get_analysis,
     list_analyses,
     list_forecast_scores,
@@ -25,6 +26,7 @@ from models import (
     AdminMetrics,
     AnalysisHistoryItem,
     AnalysisResult,
+    CalibrationSeries,
     Category,
     ForecastScore,
     HealthResponse,
@@ -286,6 +288,13 @@ async def get_saved_analysis(record_id: str) -> AnalysisResult:
 @app.get("/api/accuracy", response_model=list[AccuracySummary])
 async def get_accuracy_summary() -> list[AccuracySummary]:
     return await run_in_threadpool(accuracy_summaries)
+
+
+@app.get("/api/accuracy/calibration", response_model=list[CalibrationSeries])
+async def get_calibration_series(
+    bins: int = Query(default=10, ge=5, le=20),
+) -> list[CalibrationSeries]:
+    return await run_in_threadpool(calibration_series, bins)
 
 
 @app.get("/api/accuracy/forecasts", response_model=list[ForecastScore])

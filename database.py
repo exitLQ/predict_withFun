@@ -13,6 +13,8 @@ from models import (
     AccuracySummary,
     AnalysisHistoryItem,
     AnalysisResult,
+    CalibrationBin,
+    CalibrationSeries,
     ForecastScore,
 )
 
@@ -300,3 +302,48 @@ def accuracy_summaries() -> list[AccuracySummary]:
         )
         for provider, items in sorted(grouped.items())
     ]
+
+
+def calibration_series(bin_count: int = 10) -> list[CalibrationSeries]:
+    resolved = [
+        score
+        for score in list_forecast_scores(10_000)
+        if score.outcome is not None
+    ]
+    grouped: dict[str, list[ForecastScore]] = {}
+    for score in resolved:
+        grouped.setdefault(score.provider, []).append(score)
+    series: list[CalibrationSeries] = []
+    for provider, scores in sorted(grouped.items()):
+        buckets: list[list[ForecastScore]] = [[] for _ in range(bin_count)]
+        for score in scores:
+            index = min(int(score.predicted_probability * bin_count), bin_count - 1)
+            buckets[index].append(score)
+        bins = []
+        weighted_error = 0.0
+        for index, items in enumerate(buckets):
+            if not items:
+                continue
+            mean_probability = sum(item.predicted_probability for item in items) / len(
+                items
+            )
+            observed_frequency = sum(float(item.outcome) for item in items) / len(items)
+            weighted_error += len(items) * abs(mean_probability - observed_frequency)
+            bins.append(
+                CalibrationBin(
+                    lower_bound=index / bin_count,
+                    upper_bound=(index + 1) / bin_count,
+                    mean_probability=mean_probability,
+                    observed_frequency=observed_frequency,
+                    forecast_count=len(items),
+                )
+            )
+        series.append(
+            CalibrationSeries(
+                provider=provider,
+                resolved_forecasts=len(scores),
+                expected_calibration_error=weighted_error / len(scores),
+                bins=bins,
+            )
+        )
+    return series

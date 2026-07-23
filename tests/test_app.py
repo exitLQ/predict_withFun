@@ -103,6 +103,17 @@ def test_analysis_history_endpoints(monkeypatch):
     assert missing.status_code == 404
 
 
+def test_calibration_endpoint_validates_bins(monkeypatch):
+    monkeypatch.setattr(app, "calibration_series", lambda bins: [])
+
+    response = client.get("/api/accuracy/calibration?bins=8")
+    invalid = client.get("/api/accuracy/calibration?bins=4")
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert invalid.status_code == 422
+
+
 def test_compare_endpoint_returns_all_demo_providers(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)

@@ -42,6 +42,10 @@ def test_analysis_history_round_trip(monkeypatch):
         summary = database.accuracy_summaries()[0]
         assert summary.mean_brier_score == 0.25
         assert summary.mean_market_brier_score == 0.36
+        calibration = database.calibration_series()[0]
+        assert calibration.resolved_forecasts == 1
+        assert calibration.expected_calibration_error == 0.5
+        assert calibration.bins[0].observed_frequency == 1.0
         with closing(sqlite3.connect(database_path)) as connection:
             revision = connection.execute(
                 "SELECT version_num FROM alembic_version"

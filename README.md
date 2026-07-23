@@ -30,6 +30,7 @@ estimates side by side.
 - [Database migrations](#database-migrations)
 - [Admin dashboard](#admin-dashboard)
 - [Accuracy tracking](#accuracy-tracking)
+- [Calibration diagrams](#calibration-diagrams)
 - [Provider synthesis](#provider-synthesis)
 - [Source quality assessment](#source-quality-assessment)
 - [Cost estimates](#cost-estimates)
@@ -576,6 +577,29 @@ certain forecast scores `1`. The accuracy dashboard reports per provider:
 Historical forecasts are never rewritten when market prices change. Only the
 eventual outcome and derived score are added.
 
+## Calibration diagrams
+
+The accuracy section includes one reliability diagram for each provider with
+resolved forecasts. Predictions are grouped into ten probability intervals.
+Each plotted point compares the interval's mean predicted probability on the
+horizontal axis with its observed positive-outcome frequency on the vertical
+axis. A perfectly calibrated provider follows the dashed diagonal.
+
+Point size grows with the number of forecasts in that interval. Every chart
+also includes a text list with the interval, observed frequency, and sample
+count, so the information does not depend on color or pointer interaction.
+Empty intervals are omitted.
+
+The displayed expected calibration error (ECE) is the forecast-count-weighted
+mean absolute difference between predicted and observed probability across
+populated intervals. Lower is better, but small samples can produce unstable
+diagrams and ECE values. Calibration measures probability reliability; it does
+not replace Brier score, source review, or comparison with the market baseline.
+
+The API accepts between 5 and 20 bins. The interface uses 10 to balance detail
+and sample size. Resolution synchronization refreshes both accuracy cards and
+calibration diagrams.
+
 ## Provider synthesis
 
 Every successful provider comparison includes a deterministic synthesis. For
@@ -934,6 +958,19 @@ Returns provider-level accuracy aggregates for resolved forecasts.
 ```bash
 curl http://localhost:8000/api/accuracy
 ```
+
+### `GET /api/accuracy/calibration`
+
+Returns populated calibration bins, resolved sample count, and expected
+calibration error for every provider with resolved forecasts. The optional
+`bins` parameter defaults to `10` and accepts values from 5 to 20.
+
+```bash
+curl "http://localhost:8000/api/accuracy/calibration?bins=10"
+```
+
+Each bin contains `lower_bound`, `upper_bound`, `mean_probability`,
+`observed_frequency`, and `forecast_count`.
 
 ### `GET /api/accuracy/forecasts`
 

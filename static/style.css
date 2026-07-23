@@ -190,6 +190,22 @@ blockquote { margin: 12px 0 30px; padding: 24px 28px; background: var(--lime); c
 .admin-stats span { color: var(--muted); font-size: 11px; }
 .admin-stats strong { font: 500 16px "DM Mono", monospace; overflow-wrap: anywhere; }
 .comparison-market { border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 24px; }
+.calibration-heading { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin: 46px 0 18px; }
+.calibration-heading h3 { margin: 5px 0 0; font-size: 20px; }
+.calibration-heading > p { max-width: 380px; margin: 0; color: var(--muted); font-size: 12px; }
+.calibration-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.calibration-card { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.calibration-card-head { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+.calibration-card-head h4 { margin: 7px 0 0; font-size: 18px; text-transform: capitalize; }
+.calibration-card-head > div:last-child { display: grid; gap: 5px; text-align: right; color: var(--muted); font-size: 10px; }
+.calibration-card-head strong { color: var(--text); font: 500 15px "DM Mono", monospace; }
+.calibration-card svg { display: block; width: 100%; margin-top: 12px; overflow: visible; }
+.calibration-card svg text { fill: var(--muted); font: 9px "DM Mono", monospace; text-anchor: middle; }
+.calibration-card svg .vertical-label { transform: rotate(-90deg); }
+.calibration-axis { stroke: var(--line); stroke-width: 1; }
+.calibration-ideal { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 5 5; }
+.calibration-card circle { fill: var(--lime); fill-opacity: .82; stroke: #11160a; stroke-width: 2; }
+.calibration-details { margin: 4px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); list-style: none; color: var(--muted); font: 9px/1.7 "DM Mono", monospace; }
 .comparison-market h3 { min-height: 74px; margin: 12px 0 24px; font-size: 17px; line-height: 1.45; }
 .comparison-label { color: var(--lime); font: 10px "DM Mono", monospace; text-transform: uppercase; }
 .comparison-facts { display: grid; gap: 12px; }
@@ -259,6 +275,7 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
   .card-actions { grid-column: 2 / -1; justify-content: flex-start; }
   .analysis-grid { grid-template-columns: 1fr; }
   .comparison-market-grid { grid-template-columns: 1fr; }
+  .calibration-grid { grid-template-columns: 1fr; }
   .admin-stats { grid-template-columns: repeat(2, 1fr); }
   .provider-comparison { grid-template-columns: 1fr; }
   .synthesis-grid { grid-template-columns: 1fr; }
@@ -277,6 +294,7 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
   .tool-search, .export-actions { grid-column: auto; }
   .button-primary { grid-column: auto; }
   .section-heading { align-items: stretch; flex-direction: column; }
+  .calibration-heading { align-items: flex-start; flex-direction: column; }
   .admin-login, .admin-stats { grid-template-columns: 1fr; }
   .stats { grid-template-columns: 1fr; }
   .stats div { border-right: 0; border-bottom: 1px solid var(--line); }

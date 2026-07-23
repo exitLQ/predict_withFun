@@ -53,7 +53,8 @@ $("adminToken").value = sessionStorage.getItem("predict_withFun.adminToken") || 
 
 async function initialize() {
   await Promise.allSettled([
-    checkHealth(), loadCategories(), loadAccuracy(), loadSavedAnalyses(),
+    checkHealth(), loadCategories(), loadAccuracy(), loadCalibration(),
+    loadSavedAnalyses(),
   ]);
 }
 
@@ -125,6 +126,64 @@ async function loadAccuracy() {
   } catch (_) {
     // Accuracy is optional while the database is being initialized.
   }
+}
+
+async function loadCalibration() {
+  try {
+    const series = await api("/accuracy/calibration?bins=10");
+    const grid = $("calibrationGrid");
+    if (!series.length) return;
+    grid.replaceChildren(...series.map(calibrationCard));
+  } catch (_) {
+    // Calibration is optional while the database is being initialized.
+  }
+}
+
+function calibrationCard(series) {
+  const card = document.createElement("article");
+  card.className = "calibration-card";
+  const header = document.createElement("div");
+  header.className = "calibration-card-head";
+  header.innerHTML = `
+    <div><span class="comparison-label">Provider</span><h4></h4></div>
+    <div><span>ECE</span><strong>${series.expected_calibration_error.toFixed(4)}</strong></div>`;
+  header.querySelector("h4").textContent = series.provider;
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 320 280");
+  svg.setAttribute("role", "img");
+  svg.setAttribute(
+    "aria-label",
+    `${series.provider} calibration diagram based on ${series.resolved_forecasts} resolved forecasts`,
+  );
+  svg.innerHTML = `
+    <line class="calibration-axis" x1="42" y1="238" x2="294" y2="238"></line>
+    <line class="calibration-axis" x1="42" y1="238" x2="42" y2="14"></line>
+    <line class="calibration-ideal" x1="42" y1="238" x2="294" y2="14"></line>
+    <text x="168" y="271">Mean predicted probability</text>
+    <text class="vertical-label" x="-126" y="14">Observed frequency</text>
+    <text x="38" y="255">0</text><text x="286" y="255">1</text>
+    <text x="25" y="242">0</text><text x="25" y="19">1</text>`;
+  series.bins.forEach((bin) => {
+    const point = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    point.setAttribute("cx", 42 + bin.mean_probability * 252);
+    point.setAttribute("cy", 238 - bin.observed_frequency * 224);
+    point.setAttribute("r", Math.min(5 + Math.sqrt(bin.forecast_count), 12));
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    title.textContent = `${formatPercent(bin.mean_probability)} predicted, ${formatPercent(bin.observed_frequency)} observed, ${bin.forecast_count} forecasts`;
+    point.append(title);
+    svg.append(point);
+  });
+
+  const details = document.createElement("ul");
+  details.className = "calibration-details";
+  series.bins.forEach((bin) => {
+    const item = document.createElement("li");
+    item.textContent = `${formatPercent(bin.lower_bound)}–${formatPercent(bin.upper_bound)}: ${formatPercent(bin.observed_frequency)} observed (${bin.forecast_count})`;
+    details.append(item);
+  });
+  card.append(header, svg, details);
+  return card;
 }
 
 async function loadSavedAnalyses() {
@@ -211,7 +270,7 @@ async function syncAccuracy() {
       "success",
       3500,
     );
-    await loadAccuracy();
+    await Promise.all([loadAccuracy(), loadCalibration()]);
   } catch (error) {
     showNotice(error.message, "error");
   } finally {

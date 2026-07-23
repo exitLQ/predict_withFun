@@ -146,6 +146,21 @@ class AccuracySummary(BaseModel):
     mean_absolute_error: float = Field(ge=0, le=1)
 
 
+class CalibrationBin(BaseModel):
+    lower_bound: float = Field(ge=0, le=1)
+    upper_bound: float = Field(ge=0, le=1)
+    mean_probability: float = Field(ge=0, le=1)
+    observed_frequency: float = Field(ge=0, le=1)
+    forecast_count: int = Field(ge=1)
+
+
+class CalibrationSeries(BaseModel):
+    provider: Literal["openai", "grok", "claude"]
+    resolved_forecasts: int = Field(ge=1)
+    expected_calibration_error: float = Field(ge=0, le=1)
+    bins: list[CalibrationBin]
+
+
 class ResolutionSyncResult(BaseModel):
     checked_markets: int = Field(ge=0)
     newly_resolved_markets: int = Field(ge=0)
