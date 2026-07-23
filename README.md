@@ -1,84 +1,119 @@
-# Polymarket Analysis Tool
+# SignalDesk
 
-A web tool for analyzing Polymarket markets with AI support powered by OpenAI.
+SignalDesk zeigt die volumenstärksten aktiven Polymarket-Märkte einer Kategorie
+und ordnet ihre Wahrscheinlichkeiten mit OpenAI strukturiert ein.
 
-## Features
+> Die KI-Ausgaben dienen ausschließlich Informationszwecken und sind keine
+> Finanzberatung.
 
-- Fetch all current markets from Polymarket
-- Display the top 10 markets per category (sorted by volume)
-- AI-powered analysis of market probabilities with OpenAI GPT-4
-- Modern web UI for interactive use
+## Funktionen
 
-## Installation
+- Aktuelle Kategorien und Märkte aus der Polymarket Gamma API
+- Top 5, 10, 15 oder 25 Märkte nach Handelsvolumen
+- Volumen, Liquidität und implizite Wahrscheinlichkeiten
+- Strukturierte KI-Analyse über die OpenAI Responses API
+- Responsives, barrierearmes Frontend ohne Build-Schritt
+- API-Fehlerbehandlung, Healthcheck und fünfminütiger Daten-Cache
+- Tests, Linting, GitHub Actions und Docker-Deployment
 
-1. Install Python 3.8+
+## Lokal starten
 
-2. Install dependencies:
+Voraussetzungen: Python 3.11 oder neuer und ein OpenAI API-Schlüssel.
+
+```bash
+python -m venv .venv
+```
+
+Aktiviere die virtuelle Umgebung:
+
+```bash
+# macOS / Linux
+source .venv/bin/activate
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+```
+
+Installiere die Pakete und lege deine lokale Konfiguration an:
+
 ```bash
 pip install -r requirements.txt
+cp .env.example .env
 ```
 
-3. Configure your OpenAI API key:
-```bash
-export OPENAI_API_KEY=your_api_key_here
-```
+Unter Windows kannst du `.env.example` manuell als `.env` kopieren. Trage dort
+deinen Schlüssel als `OPENAI_API_KEY` ein. Die `.env`-Datei wird nicht
+versioniert.
 
-Or create a `.env` file:
-```
-OPENAI_API_KEY=your_api_key_here
-```
-
-## Usage
-
-1. Start the server:
-```bash
-python app.py
-```
-
-Or directly with uvicorn:
 ```bash
 uvicorn app:app --reload
 ```
 
-2. Open your browser:
-```
-http://localhost:8000
-```
+Danach ist die Anwendung unter <http://localhost:8000> erreichbar. Die
+interaktive API-Dokumentation liegt unter <http://localhost:8000/docs>.
 
-3. In the browser:
-   - Select a category
-   - Click "Load Markets" to see the top 10 markets
-   - Click "Start Analysis" to run an AI analysis
+## Konfiguration
 
-## API Endpoints
+| Variable | Standard | Beschreibung |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | – | Erforderlich für KI-Analysen |
+| `OPENAI_MODEL` | `gpt-5.6-sol` | Verwendetes OpenAI-Modell |
+| `HOST` | `0.0.0.0` | Server-Adresse |
+| `PORT` | `8000` | Server-Port |
+| `ENVIRONMENT` | `development` | Laufzeitumgebung |
 
-- `GET /api/categories` - List of all categories
-- `GET /api/markets/{category_id}` - Top 10 markets of a category
-- `POST /api/analyze?category_id={id}` - AI analysis of a category's markets
+## API
 
-## Project Structure
+| Methode | Route | Zweck |
+| --- | --- | --- |
+| `GET` | `/api/health` | Status und OpenAI-Konfiguration |
+| `GET` | `/api/categories` | Verfügbare Kategorien |
+| `GET` | `/api/markets/{id}?limit=10` | Top-Märkte einer Kategorie |
+| `POST` | `/api/analyze?category_id={id}&limit=10` | KI-Analyse |
 
-```
-prediction_tool/
-├── app.py                 # FastAPI backend
-├── polymarket_client.py   # Polymarket API client
-├── openai_analyzer.py     # OpenAI analysis logic
-├── models.py              # Data models
-├── static/                # Frontend
-│   ├── index.html
-│   ├── style.css
-│   └── app.js
-├── requirements.txt       # Python dependencies
-└── README.md
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+pytest
 ```
 
-## Technology Stack
+## Deployment
 
-- **Backend**: FastAPI (Python)
-- **Frontend**: HTML, CSS, JavaScript
-- **APIs**: 
-  - Polymarket Gamma API
-  - OpenAI API (GPT-4)
+### Docker
+
+```bash
+docker build -t signaldesk .
+docker run --rm -p 8000:8000 -e OPENAI_API_KEY=sk-... signaldesk
+```
+
+### Render
+
+Das Repository enthält eine `render.yaml`. Verbinde das Repository in Render
+als Blueprint und hinterlege `OPENAI_API_KEY` als Secret. Render baut dann das
+Docker-Image und überwacht `/api/health`.
+
+## Architektur
+
+```text
+.
+├── app.py                  # FastAPI-Routen und statische Auslieferung
+├── models.py               # Validierte API-Datenmodelle
+├── polymarket_client.py    # Polymarket-Zugriff, Parsing und Cache
+├── openai_analyzer.py      # Responses API und strukturierte Ausgabe
+├── static/                 # HTML, CSS und JavaScript
+├── tests/                  # Automatisierte Tests
+├── Dockerfile              # Produktions-Container
+└── .github/workflows/      # CI für Tests und Linting
+```
+
+## Sicherheit
+
+- API-Schlüssel bleiben ausschließlich im Backend.
+- `.env` ist in `.gitignore` ausgeschlossen.
+- Externe Texte werden im Browser als Text gerendert, nicht als ungeprüftes HTML.
+- Der Container läuft als Benutzer ohne Root-Rechte.
 
 <!-- hypertribe:sponsors:start -->
 ## Sponsors

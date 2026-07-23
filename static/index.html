@@ -1,49 +1,93 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Polymarket Analysis Tool</title>
-    <link rel="stylesheet" href="/static/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Aktive Polymarket-Märkte entdecken und mit KI einordnen.">
+  <meta name="theme-color" content="#0b0d12">
+  <title>SignalDesk — Märkte besser lesen</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Polymarket Analysis Tool</h1>
-            <p>Analysiere die Top-Märkte von Polymarket mit KI-Unterstützung</p>
-        </header>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="SignalDesk Startseite">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>SignalDesk</span>
+      </a>
+      <div class="status"><span class="status-dot"></span><span id="apiStatus">System wird geprüft</span></div>
+    </header>
 
-        <main>
-            <section class="category-section">
-                <label for="categorySelect">Kategorie auswählen:</label>
-                <select id="categorySelect">
-                    <option value="">Lade Kategorien...</option>
-                </select>
-                <button id="loadMarketsBtn" disabled>Märkte laden</button>
-                <button id="analyzeBtn" disabled>Analyse starten</button>
-            </section>
+    <main>
+      <section class="hero">
+        <p class="eyebrow">Polymarket Intelligence</p>
+        <h1>Vom Marktpreis<br>zur <em>Einordnung.</em></h1>
+        <p class="hero-copy">Entdecke die volumenstärksten Prognosemärkte und vergleiche Marktstimmung mit einer strukturierten KI-Analyse.</p>
+      </section>
 
-            <section id="marketsSection" class="markets-section" style="display: none;">
-                <h2>Top 10 Märkte</h2>
-                <div id="marketsTableContainer"></div>
-            </section>
+      <section class="control-panel" aria-labelledby="explorerTitle">
+        <div>
+          <p class="step">01 / Markt auswählen</p>
+          <h2 id="explorerTitle">Welche Signale interessieren dich?</h2>
+        </div>
+        <div class="controls">
+          <label class="field">
+            <span>Kategorie</span>
+            <select id="categorySelect" disabled>
+              <option value="">Kategorien werden geladen …</option>
+            </select>
+          </label>
+          <label class="field field-small">
+            <span>Anzahl</span>
+            <select id="limitSelect">
+              <option value="5">Top 5</option>
+              <option value="10" selected>Top 10</option>
+              <option value="15">Top 15</option>
+              <option value="25">Top 25</option>
+            </select>
+          </label>
+          <button class="button button-primary" id="loadMarketsBtn" disabled>
+            Märkte anzeigen <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </section>
 
-            <section id="analysisSection" class="analysis-section" style="display: none;">
-                <h2>Analyse-Ergebnisse</h2>
-                <div id="analysisContent"></div>
-            </section>
+      <section id="notice" class="notice" role="status" aria-live="polite" hidden></section>
 
-            <section id="loadingSection" class="loading" style="display: none;">
-                <div class="spinner"></div>
-                <p>Lade Daten...</p>
-            </section>
+      <section id="marketsSection" class="results-section" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="step">02 / Marktübersicht</p>
+            <h2 id="marketsHeading">Aktive Märkte</h2>
+          </div>
+          <button class="button button-accent" id="analyzeBtn">
+            Mit KI analysieren <span aria-hidden="true">✦</span>
+          </button>
+        </div>
+        <div id="marketStats" class="stats" aria-label="Marktstatistiken"></div>
+        <div id="marketsGrid" class="market-grid"></div>
+      </section>
 
-            <section id="errorSection" class="error" style="display: none;">
-                <p id="errorMessage"></p>
-            </section>
-        </main>
-    </div>
+      <section id="analysisSection" class="analysis-section" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="step">03 / KI-Einordnung</p>
+            <h2>Analyse</h2>
+          </div>
+          <span class="ai-label">OpenAI · strukturierte Ausgabe</span>
+        </div>
+        <div id="analysisContent"></div>
+      </section>
+    </main>
 
-    <script src="/static/app.js"></script>
+    <footer>
+      <span>SignalDesk</span>
+      <span>Marktdaten von Polymarket · Keine Finanzberatung</span>
+    </footer>
+  </div>
 </body>
 </html>

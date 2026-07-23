@@ -1,133 +1,147 @@
+import json
+import time
+from typing import Any
+
 import requests
-from typing import List, Optional
+
 from models import Category, Market, Outcome
 
-
 POLYMARKET_BASE_URL = "https://gamma-api.polymarket.com"
+POLYMARKET_WEB_URL = "https://polymarket.com/event"
+REQUEST_TIMEOUT = 20
+CACHE_TTL_SECONDS = 300
+
+_session = requests.Session()
+_session.headers.update(
+    {
+        "Accept": "application/json",
+        "User-Agent": "predict-with-fun/2.0 (+https://github.com/exitLQ/predict_withFun)",
+    }
+)
+_cache: dict[str, tuple[float, Any]] = {}
 
 
-def fetch_categories() -> List[Category]:
-    """Fetch all categories/tags from Polymarket"""
+class PolymarketError(RuntimeError):
+    pass
+
+
+def _get(path: str, params: dict[str, Any]) -> Any:
+    cache_key = f"{path}:{json.dumps(params, sort_keys=True)}"
+    cached = _cache.get(cache_key)
+    if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
+        return cached[1]
+
     try:
-        response = requests.get(f"{POLYMARKET_BASE_URL}/tags", timeout=10)
+        response = _session.get(
+            f"{POLYMARKET_BASE_URL}{path}",
+            params=params,
+            timeout=REQUEST_TIMEOUT,
+        )
         response.raise_for_status()
         data = response.json()
-        
-        categories = []
-        for tag in data:
-            categories.append(Category(
-                id=str(tag.get("id", "")),
-                name=tag.get("name", "Unknown"),
-                description=tag.get("description")
-            ))
-        return categories
-    except Exception as e:
-        print(f"Error fetching categories: {e}")
-        return []
+    except (requests.RequestException, ValueError) as exc:
+        raise PolymarketError("Polymarket ist momentan nicht erreichbar.") from exc
+
+    _cache[cache_key] = (time.monotonic(), data)
+    return data
 
 
-def fetch_markets_by_category(tag_id: str) -> List[dict]:
-    """Fetch open markets for a specific category"""
+def _as_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
+def _as_float(value: Any, default: float = 0.0) -> float:
     try:
-        params = {
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def fetch_categories() -> list[Category]:
+    data = _get("/tags", {"limit": 100})
+    if not isinstance(data, list):
+        raise PolymarketError("Polymarket lieferte ein unerwartetes Datenformat.")
+
+    categories = [
+        Category(
+            id=str(tag["id"]),
+            name=str(tag.get("label") or tag.get("name") or "Unbenannt"),
+            description=tag.get("description"),
+        )
+        for tag in data
+        if tag.get("id") is not None
+    ]
+    return sorted(categories, key=lambda category: category.name.casefold())
+
+
+def fetch_markets_by_category(tag_id: str) -> list[dict[str, Any]]:
+    data = _get(
+        "/events",
+        {
             "tag_id": tag_id,
             "active": "true",
-            "closed": "false"
-        }
-        response = requests.get(
-            f"{POLYMARKET_BASE_URL}/events",
-            params=params,
-            timeout=10
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data if isinstance(data, list) else []
-    except Exception as e:
-        print(f"Error fetching markets for category {tag_id}: {e}")
-        return []
+            "closed": "false",
+            "limit": 100,
+        },
+    )
+    if not isinstance(data, list):
+        raise PolymarketError("Polymarket lieferte ein unerwartetes Datenformat.")
+    return data
 
 
-def fetch_market_details(market_slug: str) -> Optional[Market]:
-    """Fetch detailed information for a specific market"""
-    try:
-        response = requests.get(
-            f"{POLYMARKET_BASE_URL}/markets",
-            params={"slug": market_slug},
-            timeout=10
-        )
-        response.raise_for_status()
-        data = response.json()
-        
-        if not data or len(data) == 0:
-            return None
-        
-        market_data = data[0] if isinstance(data, list) else data
-        
-        # Extract outcomes and prices
-        outcomes = []
-        condition_id = market_data.get("conditionId")
-        
-        # Try to get outcome prices from the market data
-        # Polymarket API structure may vary, so we handle different formats
-        if "outcomePrices" in market_data:
-            prices = market_data["outcomePrices"]
-            if isinstance(prices, list):
-                for i, price in enumerate(prices):
-                    prob = float(price) if price else 0.0
-                    outcomes.append(Outcome(
-                        title=f"Outcome {i+1}",
-                        price=prob,
-                        probability=prob
-                    ))
-        elif "tokens" in market_data:
-            # Alternative structure with tokens
-            tokens = market_data["tokens"]
-            for token in tokens:
-                outcomes.append(Outcome(
-                    title=token.get("outcome", "Unknown"),
-                    price=float(token.get("price", 0)),
-                    probability=float(token.get("price", 0))
-                ))
-        
-        # Get volume
-        volume = float(market_data.get("volume", 0))
-        liquidity = market_data.get("liquidity")
-        if liquidity:
-            liquidity = float(liquidity)
-        
-        return Market(
-            slug=market_slug,
-            title=market_data.get("question", market_data.get("title", "Unknown Market")),
-            description=market_data.get("description"),
-            volume=volume,
-            liquidity=liquidity,
-            outcomes=outcomes,
-            active=market_data.get("active", True)
-        )
-    except Exception as e:
-        print(f"Error fetching market details for {market_slug}: {e}")
+def _market_from_api(
+    raw: dict[str, Any], category: str, event_slug: str
+) -> Market | None:
+    slug = str(raw.get("slug") or "")
+    title = str(raw.get("question") or raw.get("title") or "")
+    if not slug or not title:
         return None
 
+    names = _as_list(raw.get("outcomes"))
+    prices = _as_list(raw.get("outcomePrices"))
+    outcomes = []
+    for index, name in enumerate(names):
+        probability = min(1.0, _as_float(prices[index] if index < len(prices) else 0))
+        outcomes.append(
+            Outcome(title=str(name), price=probability, probability=probability)
+        )
 
-def get_top_markets_by_volume(markets: List[Market], n: int = 10) -> List[Market]:
-    """Sort markets by volume and return top N"""
-    sorted_markets = sorted(markets, key=lambda m: m.volume, reverse=True)
-    return sorted_markets[:n]
+    return Market(
+        slug=slug,
+        title=title,
+        description=raw.get("description"),
+        volume=_as_float(raw.get("volumeNum", raw.get("volume"))),
+        liquidity=_as_float(raw.get("liquidityNum", raw.get("liquidity")))
+        if raw.get("liquidityNum", raw.get("liquidity")) is not None
+        else None,
+        outcomes=outcomes,
+        category=category,
+        active=bool(raw.get("active", True)),
+        url=f"{POLYMARKET_WEB_URL}/{event_slug}" if event_slug else None,
+    )
 
 
-def get_top_markets_for_category(tag_id: str, tag_name: str, n: int = 10) -> List[Market]:
-    """Get top N markets by volume for a category"""
-    events = fetch_markets_by_category(tag_id)
-    markets = []
-    
-    for event in events:
-        slug = event.get("slug") or event.get("id")
-        if not slug:
+def get_top_markets_for_category(
+    tag_id: str, tag_name: str, n: int = 10
+) -> list[Market]:
+    markets: list[Market] = []
+    for event in fetch_markets_by_category(tag_id):
+        event_slug = str(event.get("slug") or "")
+        raw_markets = event.get("markets")
+        if not isinstance(raw_markets, list):
             continue
-        
-        market = fetch_market_details(slug)
-        if market:
-            market.category = tag_name
-            markets.append(market)
-    
-    return get_top_markets_by_volume(markets, n)
+        for raw_market in raw_markets:
+            if isinstance(raw_market, dict):
+                market = _market_from_api(raw_market, tag_name, event_slug)
+                if market:
+                    markets.append(market)
+
+    return sorted(markets, key=lambda market: market.volume, reverse=True)[:n]

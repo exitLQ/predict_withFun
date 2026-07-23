@@ -1,147 +1,142 @@
 import os
-import json
-from typing import List
-from openai import OpenAI
-from models import Market, AnalysisResult, MarketAnalysis
+
 from dotenv import load_dotenv
+from openai import APIConnectionError, APIStatusError, OpenAI, RateLimitError
+from pydantic import BaseModel, Field
+
+from models import AnalysisResult, Market, MarketAnalysis
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+DEFAULT_MODEL = "gpt-5.6-sol"
+SYSTEM_INSTRUCTIONS = """
+Du analysierst Prognosemärkte nüchtern und transparent. Trenne beobachtete
+Marktpreise von deiner Schätzung. Behaupte keine Kenntnis zukünftiger Ereignisse.
+Berücksichtige Basisraten, Aktualität, Liquidität, Auflösungsregeln und bekannte
+Informationslücken. Verwende ausschließlich die gelieferten Marktdaten und
+formuliere auf Deutsch. Die Ausgabe ist keine Finanzberatung.
+""".strip()
 
 
-def build_analysis_prompt(markets: List[Market], category: str) -> str:
-    """Build a prompt for OpenAI to analyze markets"""
-    prompt = f"""Du bist ein Experte für Wahrscheinlichkeitsanalyse und Marktbewertung. 
-Analysiere die folgenden Top-Märkte aus der Kategorie "{category}" von Polymarket.
-
-Für jeden Markt sollst du:
-1. Die aktuelle Marktwahrscheinlichkeit bewerten
-2. Eine faire Einschätzung der tatsächlichen Wahrscheinlichkeit geben
-3. Risiken und Verzerrungen identifizieren
-4. Begründen, ob der Marktpreis fair, überbewertet oder unterbewertet ist
-
-Marktdaten:
-"""
-    
-    for i, market in enumerate(markets, 1):
-        prompt += f"\n{i}. {market.title}\n"
-        prompt += f"   Volumen: ${market.volume:,.2f}\n"
-        if market.description:
-            prompt += f"   Beschreibung: {market.description}\n"
-        prompt += "   Outcomes:\n"
-        for outcome in market.outcomes:
-            prompt += f"     - {outcome.title}: {outcome.probability:.2%} (Preis: {outcome.price:.4f})\n"
-    
-    prompt += """
-Antworte im folgenden JSON-Format:
-{
-  "summary": "Eine zusammenfassende Analyse aller Märkte in 2-3 Sätzen",
-  "overall_insights": "Wichtige Erkenntnisse und Trends",
-  "markets": [
-    {
-      "market_title": "Titel des Markts",
-      "market_probability": 0.65,
-      "fair_probability": 0.70,
-      "assessment": "unterbewertet|fair|überbewertet",
-      "risks": ["Risiko 1", "Risiko 2"],
-      "reasoning": "Detaillierte Begründung der Einschätzung"
-    }
-  ]
-}
-
-Wichtig: Antworte NUR mit gültigem JSON, keine zusätzlichen Erklärungen außerhalb des JSON.
-"""
-    return prompt
+class AIUnavailableError(RuntimeError):
+    pass
 
 
-def analyze_markets(markets: List[Market], category: str) -> AnalysisResult:
-    """Analyze markets using OpenAI API"""
+class GeneratedMarketAnalysis(BaseModel):
+    market_title: str
+    fair_probability: float = Field(ge=0, le=1)
+    assessment: str
+    risks: list[str]
+    reasoning: str
+
+
+class GeneratedAnalysis(BaseModel):
+    summary: str
+    overall_insights: str
+    markets: list[GeneratedMarketAnalysis]
+
+
+def _build_input(markets: list[Market], category: str) -> str:
+    lines = [
+        f'Analysiere die folgenden Märkte der Kategorie "{category}".',
+        "Bewerte jeweils die Wahrscheinlichkeit des ersten Outcomes.",
+        "",
+    ]
+    for index, market in enumerate(markets, 1):
+        outcomes = ", ".join(
+            f"{outcome.title}: {outcome.probability:.1%}"
+            for outcome in market.outcomes
+        ) or "keine Preisdaten"
+        lines.extend(
+            [
+                f"{index}. {market.title}",
+                (
+                    f"Volumen: ${market.volume:,.0f}; "
+                    f"Liquidität: ${market.liquidity or 0:,.0f}"
+                ),
+                f"Outcomes: {outcomes}",
+                f"Beschreibung: {market.description or 'nicht angegeben'}",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _normalize_assessment(value: str) -> str:
+    normalized = value.casefold()
+    if "unter" in normalized or "under" in normalized:
+        return "unterbewertet"
+    if "über" in normalized or "over" in normalized:
+        return "überbewertet"
+    return "fair"
+
+
+def analyze_markets(markets: list[Market], category: str) -> AnalysisResult:
     if not markets:
         return AnalysisResult(
             category=category,
-            summary="Keine Märkte zum Analysieren vorhanden.",
-            markets=[],
-            overall_insights="Keine Daten verfügbar."
+            summary="Keine aktiven Märkte in dieser Kategorie gefunden.",
+            overall_insights=(
+                "Wähle eine andere Kategorie oder versuche es später erneut."
+            ),
         )
-    
-    prompt = build_analysis_prompt(markets, category)
-    
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise AIUnavailableError("OPENAI_API_KEY ist nicht konfiguriert.")
+
     try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Du bist ein Experte für Wahrscheinlichkeitsanalyse und Marktbewertung. Antworte immer im angeforderten JSON-Format."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            temperature=0.7,
-            response_format={"type": "json_object"}
+        response = OpenAI(api_key=api_key).responses.parse(
+            model=os.getenv("OPENAI_MODEL", DEFAULT_MODEL),
+            instructions=SYSTEM_INSTRUCTIONS,
+            input=_build_input(markets, category),
+            text_format=GeneratedAnalysis,
         )
-        
-        content = response.choices[0].message.content
-        analysis_data = json.loads(content)
-        
-        # Build structured analysis
-        market_analyses = []
-        for market in markets:
-            # Find matching analysis from OpenAI response
-            market_analysis_data = None
-            for ma in analysis_data.get("markets", []):
-                if ma.get("market_title") == market.title:
-                    market_analysis_data = ma
-                    break
-            
-            if market_analysis_data:
-                # Get the main outcome probability (usually the first one or highest)
-                main_probability = market.outcomes[0].probability if market.outcomes else 0.5
-                
-                market_analyses.append(MarketAnalysis(
+        generated = response.output_parsed
+        if generated is None:
+            raise AIUnavailableError(
+                "Die KI-Antwort enthielt keine auswertbaren Daten."
+            )
+    except RateLimitError as exc:
+        raise AIUnavailableError(
+            "Das OpenAI-Limit wurde erreicht. Bitte versuche es später erneut."
+        ) from exc
+    except (APIConnectionError, APIStatusError) as exc:
+        raise AIUnavailableError("OpenAI ist momentan nicht erreichbar.") from exc
+
+    generated_by_title = {
+        item.market_title.casefold(): item for item in generated.markets
+    }
+    analyses: list[MarketAnalysis] = []
+    for market in markets:
+        item = generated_by_title.get(market.title.casefold())
+        market_probability = market.outcomes[0].probability if market.outcomes else 0.5
+        if item is None:
+            analyses.append(
+                MarketAnalysis(
                     market_slug=market.slug,
                     market_title=market.title,
-                    market_probability=main_probability,
-                    fair_probability=market_analysis_data.get("fair_probability"),
-                    assessment=market_analysis_data.get("assessment", "fair"),
-                    risks=market_analysis_data.get("risks", []),
-                    reasoning=market_analysis_data.get("reasoning", "")
-                ))
-            else:
-                # Fallback if no matching analysis found
-                main_probability = market.outcomes[0].probability if market.outcomes else 0.5
-                market_analyses.append(MarketAnalysis(
-                    market_slug=market.slug,
-                    market_title=market.title,
-                    market_probability=main_probability,
+                    market_probability=market_probability,
                     assessment="fair",
-                    risks=[],
-                    reasoning="Keine detaillierte Analyse verfügbar."
-                ))
-        
-        return AnalysisResult(
-            category=category,
-            summary=analysis_data.get("summary", "Analyse abgeschlossen."),
-            markets=market_analyses,
-            overall_insights=analysis_data.get("overall_insights")
+                    reasoning="Für diesen Markt wurde keine Einzelanalyse erzeugt.",
+                )
+            )
+            continue
+        analyses.append(
+            MarketAnalysis(
+                market_slug=market.slug,
+                market_title=market.title,
+                market_probability=market_probability,
+                fair_probability=item.fair_probability,
+                assessment=_normalize_assessment(item.assessment),
+                risks=item.risks[:5],
+                reasoning=item.reasoning,
+            )
         )
-        
-    except json.JSONDecodeError as e:
-        print(f"Error parsing OpenAI JSON response: {e}")
-        return AnalysisResult(
-            category=category,
-            summary="Fehler beim Parsen der Analyse-Ergebnisse.",
-            markets=[],
-            overall_insights="JSON-Parsing-Fehler."
-        )
-    except Exception as e:
-        print(f"Error calling OpenAI API: {e}")
-        return AnalysisResult(
-            category=category,
-            summary=f"Fehler bei der Analyse: {str(e)}",
-            markets=[],
-            overall_insights="API-Fehler aufgetreten."
-        )
+
+    return AnalysisResult(
+        category=category,
+        summary=generated.summary,
+        overall_insights=generated.overall_insights,
+        markets=analyses,
+    )

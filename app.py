@@ -1,91 +1,96 @@
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from typing import List
 import os
+from pathlib import Path
 
-from models import Category, Market, AnalysisResult
-from polymarket_client import fetch_categories, get_top_markets_for_category
-from openai_analyzer import analyze_markets
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
-app = FastAPI(title="Polymarket Analysis Tool")
+from models import AnalysisResult, Category, HealthResponse, Market
+from openai_analyzer import AIUnavailableError, analyze_markets
+from polymarket_client import (
+    PolymarketError,
+    fetch_categories,
+    get_top_markets_for_category,
+)
 
-# Serve static files
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+
+app = FastAPI(
+    title="SignalDesk",
+    description="Polymarket-Daten übersichtlich erkunden und mit KI einordnen.",
+    version="2.0.0",
+)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-@app.get("/")
-async def read_root():
-    """Serve the frontend"""
-    index_path = os.path.join(static_dir, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {"message": "Frontend not found. Please create static/index.html"}
+async def _category_or_404(category_id: str) -> Category:
+    categories = await run_in_threadpool(fetch_categories)
+    category = next((item for item in categories if item.id == category_id), None)
+    if category is None:
+        raise HTTPException(status_code=404, detail="Kategorie nicht gefunden.")
+    return category
 
 
-@app.get("/api/categories", response_model=List[Category])
-async def get_categories():
-    """Get all available categories"""
+@app.get("/", include_in_schema=False)
+async def read_root() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/health", response_model=HealthResponse)
+async def health() -> HealthResponse:
+    return HealthResponse(
+        status="ok",
+        openai_configured=bool(os.getenv("OPENAI_API_KEY")),
+    )
+
+
+@app.get("/api/categories", response_model=list[Category])
+async def get_categories() -> list[Category]:
     try:
-        categories = fetch_categories()
-        return categories
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching categories: {str(e)}")
+        return await run_in_threadpool(fetch_categories)
+    except PolymarketError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.get("/api/markets/{category_id}", response_model=List[Market])
-async def get_markets(category_id: str):
-    """Get top 10 markets for a category by volume"""
+@app.get("/api/markets/{category_id}", response_model=list[Market])
+async def get_markets(
+    category_id: str,
+    limit: int = Query(default=10, ge=1, le=25),
+) -> list[Market]:
     try:
-        # First, get the category name
-        categories = fetch_categories()
-        category = next((c for c in categories if c.id == category_id), None)
-        
-        if not category:
-            raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
-        
-        markets = get_top_markets_for_category(category_id, category.name, n=10)
-        return markets
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching markets: {str(e)}")
+        category = await _category_or_404(category_id)
+        return await run_in_threadpool(
+            get_top_markets_for_category, category_id, category.name, limit
+        )
+    except PolymarketError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/api/analyze", response_model=AnalysisResult)
-async def analyze_category_markets(category_id: str = Query(..., description="Category ID to analyze")):
-    """Analyze top markets for a category using OpenAI"""
+async def analyze_category_markets(
+    category_id: str = Query(..., min_length=1),
+    limit: int = Query(default=10, ge=1, le=10),
+) -> AnalysisResult:
     try:
-        # Get category name
-        categories = fetch_categories()
-        category = next((c for c in categories if c.id == category_id), None)
-        
-        if not category:
-            raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
-        
-        # Get top markets
-        markets = get_top_markets_for_category(category_id, category.name, n=10)
-        
-        if not markets:
-            return AnalysisResult(
-                category=category.name,
-                summary="Keine Märkte in dieser Kategorie gefunden.",
-                markets=[],
-                overall_insights="Keine Daten verfügbar."
-            )
-        
-        # Analyze with OpenAI
-        analysis = analyze_markets(markets, category.name)
-        return analysis
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error analyzing markets: {str(e)}")
+        category = await _category_or_404(category_id)
+        markets = await run_in_threadpool(
+            get_top_markets_for_category, category_id, category.name, limit
+        )
+        return await run_in_threadpool(analyze_markets, markets, category.name)
+    except PolymarketError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except AIUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    uvicorn.run(
+        "app:app",
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", "8000")),
+        reload=os.getenv("ENVIRONMENT", "development") == "development",
+    )
