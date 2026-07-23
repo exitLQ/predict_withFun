@@ -10,6 +10,7 @@ from openai import APIConnectionError, APIStatusError, OpenAI, RateLimitError
 from pydantic import BaseModel, Field
 
 from models import AnalysisResult, Market, MarketAnalysis, Source, UsageInfo
+from source_quality import assess_source
 
 load_dotenv()
 
@@ -97,9 +98,15 @@ def _extract_sources(value: Any) -> list[Source]:
                         if urlparse(url).netloc in {"x.com", "www.x.com"}
                         else urlparse(url).netloc
                     )
-                found[url] = Source(
+                assessment = assess_source(url, str(title or "Source"))
+                found[assessment.url] = Source(
                     title=str(title or item.get("name") or "Source"),
-                    url=url,
+                    url=assessment.url,
+                    domain=assessment.domain,
+                    category=assessment.category,
+                    quality=assessment.quality,
+                    quality_score=assessment.score,
+                    quality_reason=assessment.reason,
                 )
             for child in item.values():
                 visit(child)
@@ -108,7 +115,10 @@ def _extract_sources(value: Any) -> list[Source]:
                 visit(child)
 
     visit(value)
-    return list(found.values())[:12]
+    return sorted(
+        found.values(),
+        key=lambda source: (-source.quality_score, source.domain, source.url),
+    )[:12]
 
 
 def _usage_value(data: dict[str, Any], *paths: str) -> int:

@@ -217,6 +217,12 @@ blockquote { margin: 12px 0 30px; padding: 24px 28px; background: var(--lime); c
 .sources h3 { margin: 0 0 8px; font-size: 16px; }
 .sources a { color: var(--muted); text-decoration: none; font-size: 13px; overflow-wrap: anywhere; }
 .sources a:hover { color: var(--lime); }
+.source-row { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); }
+.source-row:first-of-type { border-top: 0; }
+.source-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.source-meta span { padding: 4px 7px; border-radius: 100px; background: rgba(255,255,255,.04); color: var(--muted); font: 9px "DM Mono", monospace; text-transform: uppercase; }
+.source-meta .quality-high { color: var(--lime); }
+.source-meta .quality-low { color: var(--red); }
 .mini-spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 11px; }

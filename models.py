@@ -42,6 +42,18 @@ class MarketAnalysis(BaseModel):
 class Source(BaseModel):
     title: str
     url: str
+    domain: str = ""
+    category: Literal[
+        "government",
+        "academic",
+        "official",
+        "news",
+        "social",
+        "other",
+    ] = "other"
+    quality: Literal["high", "medium", "low"] = "medium"
+    quality_score: float = Field(default=0.5, ge=0, le=1)
+    quality_reason: str = "Unclassified web source."
 
 
 class PricePoint(BaseModel):

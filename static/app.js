@@ -567,12 +567,26 @@ function renderAnalysis(analysis, container = $("analysisContent"), reset = true
     title.textContent = "Sources";
     sources.append(title);
     analysis.sources.forEach((source, index) => {
+      const row = document.createElement("div");
+      row.className = "source-row";
       const link = document.createElement("a");
       link.href = source.url;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       link.textContent = `${index + 1}. ${source.title}`;
-      sources.append(link);
+      const metadata = document.createElement("div");
+      metadata.className = "source-meta";
+      const category = document.createElement("span");
+      category.textContent = source.category;
+      const quality = document.createElement("span");
+      quality.className = `source-quality quality-${source.quality}`;
+      quality.textContent = `${source.quality} · ${Math.round(source.quality_score * 100)}`;
+      quality.title = source.quality_reason;
+      const domain = document.createElement("span");
+      domain.textContent = source.domain;
+      metadata.append(category, quality, domain);
+      row.append(link, metadata);
+      sources.append(row);
     });
     container.append(sources);
   }

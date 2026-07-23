@@ -28,6 +28,7 @@ estimates side by side.
 - [Persistent analysis history](#persistent-analysis-history)
 - [Accuracy tracking](#accuracy-tracking)
 - [Provider synthesis](#provider-synthesis)
+- [Source quality assessment](#source-quality-assessment)
 - [Cost estimates](#cost-estimates)
 - [API reference](#api-reference)
 - [Data models](#data-models)
@@ -71,6 +72,7 @@ estimates side by side.
 - Stores completed live analyses in PostgreSQL or local SQLite
 - Scores resolved forecasts with Brier score and compares AI with the market
 - Builds an accuracy-weighted consensus from provider comparison results
+- Normalizes, deduplicates, classifies, and ranks research sources
 
 ### Browser tools
 
@@ -477,6 +479,40 @@ or `overvalued`; smaller differences are classified as `fair`.
 Synthesis is computed locally from validated results and does not make another
 paid AI request.
 
+## Source quality assessment
+
+Extracted research URLs pass through a deterministic quality pipeline before
+they are returned:
+
+1. host names are normalized to lowercase and `www.` is removed;
+2. URL fragments and common tracking parameters are removed;
+3. canonical URLs are deduplicated;
+4. domains are assigned a source category;
+5. each source receives a quality level, numeric score, and explanation;
+6. sources are sorted by score and limited to the best 12.
+
+Supported categories are `government`, `academic`, `official`, `news`,
+`social`, and `other`.
+
+| Source type | Default score | Quality |
+| --- | ---: | --- |
+| Government domain | `0.95` | High |
+| Academic domain | `0.90` | High |
+| Recognized international institution | `0.90` | High |
+| Established news domain | `0.80` | High |
+| Official-looking title on an unlisted domain | `0.70` | Medium |
+| General web source | `0.50` | Medium |
+| Social platform | `0.35` | Low |
+
+The frontend shows category, domain, quality, and score. Hovering over the
+quality badge displays the rule-based explanation.
+
+This score is a review aid, not a factuality guarantee. Domain reputation
+cannot prove that an individual article is correct, current, independent, or
+relevant. Social sources are ranked lower because they require corroboration,
+not because every social post is false. The allowlists are intentionally small
+and can be reviewed in `source_quality.py`.
+
 ## Cost estimates
 
 The estimated cost is:
@@ -778,6 +814,9 @@ Each generated market assessment contains:
 The top-level result includes analysis content, sources, provider metadata,
 cache status, usage, estimated cost, and the financial disclaimer.
 
+Each source includes its canonical URL, domain, category, quality level,
+numeric quality score, and a human-readable scoring explanation.
+
 ### ProviderComparison
 
 Comparison responses contain a list of successful `AnalysisResult` objects and
@@ -811,10 +850,11 @@ The test suite covers:
 - OpenAI, Grok, and Claude provider selection in demo mode;
 - analysis-cache behavior;
 - automatic fallback;
-- usage and cost calculation.
+- usage and cost calculation;
 - persistent history round trips and skipped demo/cache records;
-- resolution parsing, Brier scoring, and provider accuracy summaries.
-- provider weighting, consensus probabilities, and disagreement classification.
+- resolution parsing, Brier scoring, and provider accuracy summaries;
+- provider weighting, consensus probabilities, and disagreement classification;
+- URL canonicalization, deduplication, source classification, and ranking.
 
 GitHub Actions installs `requirements-dev.txt`, runs Ruff, and executes pytest
 on every configured workflow trigger. A red workflow means at least one lint
@@ -910,6 +950,7 @@ scaling, use a shared cache and limiter. Also consider:
 ├── models.py                # Pydantic request and response models
 ├── openai_analyzer.py       # All AI providers, cache, fallback, and costs
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
+├── source_quality.py        # Source normalization and quality rules
 ├── static/
 │   ├── index.html           # Application markup
 │   ├── app.js               # Browser state, API calls, and rendering
@@ -968,6 +1009,13 @@ scaling, use a shared cache and limiter. Also consider:
 - aggregates provider estimates without another API request;
 - classifies disagreement and consensus valuation;
 - combines unique provider risks.
+
+`source_quality.py`:
+
+- removes common URL tracking data;
+- canonicalizes source URLs for deduplication;
+- classifies recognized domain types;
+- assigns transparent quality scores and explanations.
 
 ### Frontend responsibilities
 
