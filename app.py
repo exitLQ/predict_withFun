@@ -7,11 +7,23 @@ import uuid
 from collections import defaultdict, deque
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from auth import (
+    CSRF_COOKIE,
+    SESSION_COOKIE,
+    AuthError,
+    authenticate,
+    bootstrap_admin,
+    create_session,
+    create_user,
+    delete_session,
+    session_user,
+    valid_csrf,
+)
 from database import (
     accuracy_summaries,
     admin_database_statistics,
@@ -34,6 +46,7 @@ from models import (
     AdminMetrics,
     AnalysisHistoryItem,
     AnalysisResult,
+    AuthCredentials,
     CalibrationSeries,
     Category,
     ForecastScore,
@@ -44,6 +57,7 @@ from models import (
     ProviderComparison,
     ReadinessResponse,
     ResolutionSyncResult,
+    UserProfile,
 )
 from monitoring import initialize_monitoring, monitoring_enabled
 from openai_analyzer import AIUnavailableError, analyze_markets
@@ -65,6 +79,7 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 logger = get_logger("http")
 initialize_monitoring()
+bootstrap_admin()
 
 app = FastAPI(
     title="predict_withFun",
@@ -204,7 +219,53 @@ async def readiness() -> ReadinessResponse | JSONResponse:
     return result
 
 
-def _authorize_admin(request: Request) -> None:
+async def _current_user(request: Request) -> UserProfile | None:
+    return await run_in_threadpool(
+        session_user,
+        request.cookies.get(SESSION_COOKIE),
+    )
+
+
+async def _require_user(
+    request: Request,
+    *,
+    role: str | None = None,
+    csrf: bool = False,
+) -> UserProfile:
+    user = await _current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if role and user.role != role:
+        raise HTTPException(status_code=403, detail="Insufficient permissions.")
+    if csrf:
+        cookie = request.cookies.get(CSRF_COOKIE)
+        supplied = request.headers.get("X-CSRF-Token")
+        if (
+            not cookie
+            or not supplied
+            or not secrets.compare_digest(cookie, supplied)
+            or not await run_in_threadpool(
+                valid_csrf,
+                request.cookies.get(SESSION_COOKIE),
+                supplied,
+            )
+        ):
+            raise HTTPException(status_code=403, detail="Invalid CSRF token.")
+    return user
+
+
+async def _require_analysis_access(request: Request) -> UserProfile | None:
+    if os.getenv("AUTH_REQUIRED", "false").casefold() != "true":
+        return await _current_user(request)
+    return await _require_user(request, csrf=True)
+
+
+async def _authorize_admin(request: Request, *, csrf: bool = False) -> None:
+    user = await _current_user(request)
+    if user is not None and user.role == "admin":
+        if csrf:
+            await _require_user(request, role="admin", csrf=True)
+        return
     configured_token = os.getenv("ADMIN_TOKEN", "")
     production = os.getenv("ENVIRONMENT", "development").casefold() == "production"
     if not configured_token:
@@ -220,9 +281,87 @@ def _authorize_admin(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Invalid admin token.")
 
 
+def _set_session_cookies(
+    response: Response,
+    session_token: str,
+    csrf_token: str,
+) -> None:
+    production = os.getenv("ENVIRONMENT", "development").casefold() == "production"
+    max_age = max(1, min(int(os.getenv("SESSION_TTL_HOURS", "168")), 720)) * 3600
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_token,
+        max_age=max_age,
+        httponly=True,
+        secure=production,
+        samesite="strict",
+        path="/",
+    )
+    response.set_cookie(
+        CSRF_COOKIE,
+        csrf_token,
+        max_age=max_age,
+        httponly=False,
+        secure=production,
+        samesite="strict",
+        path="/",
+    )
+
+
+@app.post("/api/auth/register", response_model=UserProfile)
+async def register(credentials: AuthCredentials, response: Response) -> UserProfile:
+    if os.getenv("ALLOW_REGISTRATION", "false").casefold() != "true":
+        raise HTTPException(status_code=403, detail="Registration is disabled.")
+    try:
+        user = await run_in_threadpool(
+            create_user,
+            credentials.email,
+            credentials.password,
+        )
+    except AuthError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    session_token, csrf_token = await run_in_threadpool(create_session, user.id)
+    _set_session_cookies(response, session_token, csrf_token)
+    return user
+
+
+@app.post("/api/auth/login", response_model=UserProfile)
+async def login(credentials: AuthCredentials, response: Response) -> UserProfile:
+    try:
+        user = await run_in_threadpool(
+            authenticate,
+            credentials.email,
+            credentials.password,
+        )
+    except AuthError:
+        user = None
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    session_token, csrf_token = await run_in_threadpool(create_session, user.id)
+    _set_session_cookies(response, session_token, csrf_token)
+    return user
+
+
+@app.get("/api/auth/me", response_model=UserProfile)
+async def auth_me(request: Request) -> UserProfile:
+    return await _require_user(request)
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request, response: Response) -> dict[str, bool]:
+    await _require_user(request, csrf=True)
+    await run_in_threadpool(
+        delete_session,
+        request.cookies.get(SESSION_COOKIE),
+    )
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.delete_cookie(CSRF_COOKIE, path="/")
+    return {"logged_out": True}
+
+
 @app.get("/api/admin/metrics", response_model=AdminMetrics)
 async def admin_metrics(request: Request) -> AdminMetrics:
-    _authorize_admin(request)
+    await _authorize_admin(request)
     process = metrics_snapshot()
     database_available = True
     try:
@@ -294,6 +433,7 @@ async def analyze_category_markets(
     limit: int = Query(default=10, ge=1, le=10),
     provider: str = Query(default="openai", pattern="^(openai|grok|claude)$"),
 ) -> AnalysisResult:
+    await _require_analysis_access(request)
     _enforce_analysis_limit(request)
     try:
         category = await _category_or_404(category_id)
@@ -317,6 +457,7 @@ async def compare_category_markets(
     category_id: str = Query(..., min_length=1),
     limit: int = Query(default=10, ge=1, le=10),
 ) -> ProviderComparison:
+    await _require_analysis_access(request)
     _enforce_analysis_limit(request)
     try:
         data = await run_in_threadpool(run_comparison_task, category_id, limit)
@@ -337,6 +478,7 @@ async def analyze_single_market(
     market_slug: str,
     provider: str = Query(default="openai", pattern="^(openai|grok|claude)$"),
 ) -> AnalysisResult:
+    await _require_analysis_access(request)
     _enforce_analysis_limit(request)
     try:
         category = await _category_or_404(category_id)
@@ -359,13 +501,18 @@ async def analyze_single_market(
 
 @app.get("/api/analyses", response_model=list[AnalysisHistoryItem])
 async def get_analysis_history(
+    request: Request,
     limit: int = Query(default=25, ge=1, le=100),
 ) -> list[AnalysisHistoryItem]:
+    if os.getenv("AUTH_REQUIRED", "false").casefold() == "true":
+        await _require_user(request)
     return await run_in_threadpool(list_analyses, limit)
 
 
 @app.get("/api/analyses/{record_id}", response_model=AnalysisResult)
-async def get_saved_analysis(record_id: str) -> AnalysisResult:
+async def get_saved_analysis(request: Request, record_id: str) -> AnalysisResult:
+    if os.getenv("AUTH_REQUIRED", "false").casefold() == "true":
+        await _require_user(request)
     result = await run_in_threadpool(get_analysis, record_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Analysis not found.")
@@ -393,8 +540,10 @@ async def get_forecast_scores(
 
 @app.post("/api/accuracy/sync", response_model=ResolutionSyncResult)
 async def sync_accuracy(
+    request: Request,
     limit: int = Query(default=100, ge=1, le=500),
 ) -> ResolutionSyncResult:
+    await _authorize_admin(request, csrf=True)
     data = await run_in_threadpool(run_accuracy_sync_task, limit)
     return ResolutionSyncResult.model_validate(data)
 
@@ -405,19 +554,24 @@ async def submit_comparison_job(
     category_id: str = Query(..., min_length=1),
     limit: int = Query(default=10, ge=1, le=10),
 ) -> JobStatus:
+    await _require_analysis_access(request)
     _enforce_analysis_limit(request)
     return submit_job(run_comparison_task, category_id, limit)
 
 
 @app.post("/api/jobs/accuracy-sync", response_model=JobStatus)
 async def submit_accuracy_sync_job(
+    request: Request,
     limit: int = Query(default=100, ge=1, le=500),
 ) -> JobStatus:
+    await _authorize_admin(request, csrf=True)
     return submit_job(run_accuracy_sync_task, limit)
 
 
 @app.get("/api/jobs/{job_id}", response_model=JobStatus)
-async def read_job_status(job_id: str) -> JobStatus:
+async def read_job_status(request: Request, job_id: str) -> JobStatus:
+    if os.getenv("AUTH_REQUIRED", "false").casefold() == "true":
+        await _require_user(request)
     status = get_job_status(job_id)
     if status is None:
         raise HTTPException(status_code=404, detail="Background job not found.")

@@ -19,7 +19,10 @@
         <span class="brand-mark" aria-hidden="true"></span>
         <span>predict_withFun</span>
       </a>
-      <div class="status"><span class="status-dot"></span><span id="apiStatus">Checking system</span></div>
+      <div class="topbar-actions">
+        <div class="status"><span class="status-dot"></span><span id="apiStatus">Checking system</span></div>
+        <button class="text-button" id="toggleAccount">Account</button>
+      </div>
     </header>
 
     <main>
@@ -66,6 +69,30 @@
       </section>
 
       <section id="notice" class="notice" role="status" aria-live="polite" hidden></section>
+
+      <section id="accountPanel" class="account-panel" aria-labelledby="accountHeading" hidden>
+        <div>
+          <p class="step">Access / Secure session</p>
+          <h2 id="accountHeading">Your account</h2>
+          <p id="accountSummary">Sign in to access protected research features.</p>
+        </div>
+        <form id="accountForm" class="account-form">
+          <label class="tool-field" for="accountEmail">
+            <span>Email</span>
+            <input id="accountEmail" type="email" autocomplete="email" required>
+          </label>
+          <label class="tool-field" for="accountPassword">
+            <span>Password</span>
+            <input id="accountPassword" type="password" autocomplete="current-password"
+              minlength="12" maxlength="256" required>
+          </label>
+          <div class="account-buttons">
+            <button class="button button-primary" id="loginAccount" type="submit">Sign in</button>
+            <button class="text-button" id="registerAccount" type="button">Create account</button>
+          </div>
+        </form>
+        <button class="text-button" id="logoutAccount" type="button" hidden>Sign out</button>
+      </section>
 
       <section id="marketsSection" class="results-section" hidden>
         <div class="section-heading">

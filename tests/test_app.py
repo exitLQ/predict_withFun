@@ -53,6 +53,15 @@ def test_categories_endpoint(monkeypatch):
     assert response.json()[0]["name"] == "Politics"
 
 
+def test_analysis_requires_account_when_enabled(monkeypatch):
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    monkeypatch.setattr(app, "session_user", lambda token: None)
+
+    response = client.post("/api/analyze?category_id=1")
+
+    assert response.status_code == 401
+
+
 def test_admin_endpoint_requires_configured_token(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("ADMIN_TOKEN", "secret-token")

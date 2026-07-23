@@ -28,6 +28,7 @@ estimates side by side.
 - [Redis and background jobs](#redis-and-background-jobs)
 - [Structured logging](#structured-logging)
 - [Monitoring and error tracking](#monitoring-and-error-tracking)
+- [User accounts and permissions](#user-accounts-and-permissions)
 - [Persistent analysis history](#persistent-analysis-history)
 - [Database migrations](#database-migrations)
 - [Admin dashboard](#admin-dashboard)
@@ -359,6 +360,11 @@ values supplied through environment variables.
 | `ANALYSIS_REQUESTS_PER_HOUR` | `5` | Maximum analysis requests per client IP and process |
 | `ENVIRONMENT` | `development` | Enables reload only when running `python app.py` in development |
 | `ADMIN_TOKEN` | `change-me` | Bearer token that protects admin metrics; required in production |
+| `AUTH_REQUIRED` | `false` | Require an authenticated session for AI analysis and saved history |
+| `ALLOW_REGISTRATION` | `true` | Allow self-service creation of `user` accounts |
+| `SESSION_TTL_HOURS` | `168` | Session lifetime, clamped from 1 to 720 hours |
+| `BOOTSTRAP_ADMIN_EMAIL` | — | Optional first administrator email |
+| `BOOTSTRAP_ADMIN_PASSWORD` | — | Optional first administrator password; minimum 12 characters |
 | `LOG_FORMAT` | `json` | `json` for structured logs or `text` for local readability |
 | `LOG_LEVEL` | `INFO` | Python log threshold such as `DEBUG`, `INFO`, or `WARNING` |
 | `SENTRY_DSN` | — | Enables optional server-side Sentry reporting |
@@ -399,6 +405,50 @@ allows token-free access only when no token is configured.
 Runtime counters are intentionally lightweight and process-local. They reset
 after a restart and are not combined across multiple web workers. Stored
 history and estimated cost come from the database and remain durable.
+
+An authenticated `admin` session can open the dashboard without entering
+`ADMIN_TOKEN`. The bearer token remains available for scripts and emergency
+access. A normal `user` receives `403`.
+
+## User accounts and permissions
+
+The top-bar **Account** panel supports registration, sign-in, persistent
+same-origin sessions, and sign-out. Accounts use a normalized lowercase email,
+a 12–256 character password, and one of two roles:
+
+| Role | Permissions |
+| --- | --- |
+| `user` | Run protected AI analysis, provider comparison, and view saved analysis history |
+| `admin` | All user permissions plus admin metrics and manual resolution synchronization |
+
+When `AUTH_REQUIRED=false`, public analysis and history behavior is retained
+for local development and backward compatibility. When it is `true`, analysis,
+comparison, queued comparison, and saved-history routes return `401` without a
+session. Render enables this production setting. Market browsing, price
+history, provider accuracy, calibration, liveness, and readiness remain public.
+
+Set `ALLOW_REGISTRATION=false` for a closed deployment. The optional bootstrap
+credentials create the first admin if that email does not already exist. They
+do not update an existing password or role. After the admin exists, remove
+`BOOTSTRAP_ADMIN_PASSWORD` from the environment and redeploy.
+
+Passwords are never stored directly. The backend uses Python's `scrypt`
+implementation with a random 16-byte salt and constant-time verification.
+Login creates an opaque random session token; only its SHA-256 digest is stored
+in `user_sessions`. The browser receives:
+
+- `predict_session`: `HttpOnly`, `SameSite=Strict`, and `Secure` in production;
+- `predict_csrf`: readable by same-origin JavaScript, `SameSite=Strict`, and
+  `Secure` in production.
+
+Authenticated state-changing requests must send the matching CSRF value in
+`X-CSRF-Token`. The server compares the header, cookie, and stored digest in
+constant time. Logout deletes the server-side session and both cookies.
+Expired sessions are rejected and removed when accessed.
+
+The current saved-analysis archive is shared across authenticated users; it is
+not a private per-user workspace. Emails are account identifiers and are not
+included in structured operational logs.
 
 ### Cost configuration
 
@@ -654,6 +704,7 @@ Every migration must provide both `upgrade()` and `downgrade()`, remain
 compatible with PostgreSQL and SQLite, and be reviewed before deployment. The
 initial migration safely detects tables created by older predict_withFun
 versions, adds missing indexes, and then establishes Alembic's revision marker.
+Revision `0002` adds unique user accounts and expiring server-side sessions.
 
 Database access lazily applies pending migrations once per configured database
 URL as a safety net. The Docker entrypoint explicitly runs migrations before
@@ -871,6 +922,32 @@ curl http://localhost:8000/api/ready
 ```
 
 The response exposes only dependency booleans and whether Sentry initialized.
+
+### Account endpoints
+
+`POST /api/auth/register` accepts JSON `email` and `password`, creates a
+`user`, starts a session, and returns the public user profile. It returns `403`
+when registration is disabled.
+
+`POST /api/auth/login` accepts the same JSON, returns a profile, and sets the
+session/CSRF cookies. Authentication failures use one generic message so the
+response does not confirm whether an email exists.
+
+`GET /api/auth/me` returns the current profile or `401`.
+
+`POST /api/auth/logout` requires the `X-CSRF-Token` header and deletes the
+server-side session.
+
+```bash
+curl -c cookies.txt \
+  -H "Content-Type: application/json" \
+  -d '{"email":"person@example.com","password":"a-long-password"}' \
+  http://localhost:8000/api/auth/login
+```
+
+Browser clients send cookies automatically. Non-browser clients must preserve
+both returned cookies and copy the `predict_csrf` cookie value into the
+`X-CSRF-Token` header for protected `POST` requests.
 
 ### `GET /api/admin/metrics`
 
@@ -1144,6 +1221,9 @@ curl -X POST "http://localhost:8000/api/accuracy/sync?limit=100"
 | Status | Meaning |
 | --- | --- |
 | `200` | Successful request |
+| `400` | Invalid account input or duplicate registration |
+| `401` | Authentication is required or credentials are invalid |
+| `403` | Registration, role, or CSRF policy rejected the request |
 | `404` | Category or market was not found |
 | `422` | Query parameter validation failed |
 | `429` | Per-client analysis limit was reached |
@@ -1227,6 +1307,7 @@ The test suite covers:
 - scheduled resolution CLI argument validation and JSON output;
 - structured JSON context, request IDs, and recursive secret redaction;
 - readiness dependency behavior and outbound monitoring privacy scrubbing;
+- password/session round trips, CSRF validation, and protected-route policy;
 - provider weighting, consensus probabilities, and disagreement classification;
 - URL canonicalization, deduplication, source classification, and ranking.
 - prompt framing, control-character cleanup, boundary filtering, and output limits;
@@ -1293,8 +1374,9 @@ The included `render.yaml` defines a Docker web service named
 2. In Render, create a new Blueprint.
 3. Connect `exitLQ/predict_withFun`.
 4. Add the desired provider keys as secret environment variables.
-5. Deploy the Blueprint.
-6. Confirm that `/api/health` returns `status: ok`.
+5. Set strong `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` secrets.
+6. Deploy, sign in as the administrator, then remove the bootstrap password.
+7. Confirm that `/api/health` is live and `/api/ready` reports `ready`.
 
 The Blueprint configures PostgreSQL, a private Render Key Value instance,
 default models, cache TTL, provider fallback, the `/api/ready` health-check path,
@@ -1340,6 +1422,7 @@ are shared. Also consider:
 ├── .github/
 │   └── workflows/           # GitHub Actions CI
 ├── app.py                   # FastAPI routes, limits, and static delivery
+├── auth.py                  # Password hashing, sessions, roles, and CSRF
 ├── database.py              # PostgreSQL/SQLite analysis persistence
 ├── infrastructure.py        # Redis cache, limits, and shared job status
 ├── job_queue.py             # Local and RQ background-job adapter
@@ -1378,6 +1461,13 @@ are shared. Also consider:
 - loads Polymarket data outside the async event loop;
 - runs provider comparisons concurrently;
 - maps domain errors to HTTP responses.
+
+`auth.py`:
+
+- validates and normalizes account email addresses;
+- hashes passwords with salted scrypt and constant-time comparison;
+- creates opaque, expiring server-side sessions;
+- validates double-submit CSRF tokens and bootstraps the first admin.
 
 `database.py`:
 
@@ -1492,6 +1582,8 @@ The frontend uses browser-native APIs only. It:
 ## Security and privacy
 
 - Provider secrets stay in backend environment variables.
+- Passwords and raw session/CSRF tokens are never stored in the database.
+- Production cookies are secure and strict-same-site; sessions are HTTP-only.
 - `.env` is excluded from version control.
 - The public health endpoint exposes only whether a key exists.
 - Query parameters are validated by FastAPI.
@@ -1502,7 +1594,8 @@ The frontend uses browser-native APIs only. It:
 - Sentry disables default PII and applies a final outbound event scrubber.
 - External links use `noopener noreferrer`.
 - The production container runs without root privileges.
-- No application user account, personal profile, or server-side watchlist is stored.
+- Account storage is limited to email, password hash, role, status, and creation time.
+- Watchlists remain browser-local and are not attached to user accounts.
 
 Polymarket descriptions and search results are untrusted external content.
 The same defense-in-depth policy is applied to OpenAI, Grok, and Claude:

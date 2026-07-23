@@ -193,6 +193,18 @@ class ReadinessResponse(BaseModel):
     sentry_configured: bool
 
 
+class AuthCredentials(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=12, max_length=256)
+
+
+class UserProfile(BaseModel):
+    id: str
+    email: str
+    role: Literal["user", "admin"]
+    created_at: datetime
+
+
 class ProviderAdminMetrics(BaseModel):
     provider: Literal["openai", "grok", "claude"]
     calls: int = Field(ge=0)

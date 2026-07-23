@@ -56,7 +56,7 @@ def test_analysis_history_round_trip(monkeypatch):
                     "PRAGMA index_list('forecast_scores')"
                 )
             }
-        assert revision == ("0001",)
+        assert revision == ("0002",)
         assert "forecast_scores_market_slug_idx" in indexes
     finally:
         Path(database_path).unlink(missing_ok=True)

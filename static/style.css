@@ -258,9 +258,17 @@ blockquote { margin: 12px 0 30px; padding: 24px 28px; background: var(--lime); c
 .mini-spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 11px; }
+.topbar-actions { display: flex; align-items: center; gap: 18px; }
+.account-panel { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(360px, 1.2fr) auto; gap: 34px; align-items: end; margin-bottom: 32px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.account-panel h2 { margin: 5px 0 8px; font-size: 22px; }
+.account-panel p { margin: 0; color: var(--muted); font-size: 12px; }
+.account-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+.account-buttons { display: grid; gap: 3px; }
+.account-buttons .button-primary { min-height: 48px; white-space: nowrap; }
 
 @media (max-width: 900px) {
   .control-panel { grid-template-columns: 1fr; gap: 30px; }
+  .account-panel { grid-template-columns: 1fr; align-items: stretch; }
   .market-tools { grid-template-columns: 1fr 1fr; }
   .history-filters { grid-template-columns: 1fr 1fr; }
   .history-filters .tool-field:first-child { grid-column: 1 / -1; }
@@ -284,6 +292,7 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
   .shell { width: min(100% - 24px, 1240px); }
   .topbar { height: 66px; }
   .status span:last-child { display: none; }
+  .account-form { grid-template-columns: 1fr; }
   .hero { padding: 64px 0 52px; }
   .hero h1 { font-size: clamp(50px, 17vw, 76px); }
   .controls { grid-template-columns: 1fr; }

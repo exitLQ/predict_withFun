@@ -23,6 +23,16 @@ services:
         value: true
       - key: ADMIN_TOKEN
         sync: false
+      - key: AUTH_REQUIRED
+        value: true
+      - key: ALLOW_REGISTRATION
+        value: true
+      - key: SESSION_TTL_HOURS
+        value: 168
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT

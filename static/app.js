@@ -17,6 +17,7 @@ const state = {
   watchlist: new Set(loadWatchlist()),
   comparison: new Set(),
   savedAnalyses: [],
+  user: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -50,23 +51,94 @@ $("analysisProvider").addEventListener("change", renderSavedAnalyses);
 $("analysisLimit").addEventListener("change", loadSavedAnalyses);
 $("loadAdmin").addEventListener("click", loadAdminDashboard);
 $("adminToken").value = sessionStorage.getItem("predict_withFun.adminToken") || "";
+$("toggleAccount").addEventListener("click", () => {
+  $("accountPanel").hidden = !$("accountPanel").hidden;
+});
+$("accountForm").addEventListener("submit", (event) => authenticateAccount(event, false));
+$("registerAccount").addEventListener("click", (event) => authenticateAccount(event, true));
+$("logoutAccount").addEventListener("click", logoutAccount);
 
 async function initialize() {
   await Promise.allSettled([
     checkHealth(), loadCategories(), loadAccuracy(), loadCalibration(),
     loadSavedAnalyses(),
+    loadAccount(),
   ]);
 }
 
+function cookieValue(name) {
+  const prefix = `${encodeURIComponent(name)}=`;
+  const item = document.cookie.split("; ").find((value) => value.startsWith(prefix));
+  return item ? decodeURIComponent(item.slice(prefix.length)) : "";
+}
+
 async function api(path, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  const csrf = !["GET", "HEAD", "OPTIONS"].includes(method)
+    ? cookieValue("predict_csrf")
+    : "";
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: { Accept: "application/json", ...options.headers },
+    headers: {
+      Accept: "application/json",
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      ...options.headers,
+    },
   });
   let body = {};
   try { body = await response.json(); } catch (_) { /* empty response */ }
   if (!response.ok) throw new Error(body.detail || "The request failed.");
   return body;
+}
+
+async function loadAccount() {
+  try {
+    state.user = await api("/auth/me");
+  } catch (_) {
+    state.user = null;
+  }
+  renderAccount();
+}
+
+function renderAccount() {
+  const signedIn = Boolean(state.user);
+  $("accountForm").hidden = signedIn;
+  $("logoutAccount").hidden = !signedIn;
+  $("accountSummary").textContent = signedIn
+    ? `Signed in as ${state.user.email} · ${state.user.role}`
+    : "Sign in to access protected research features.";
+  $("toggleAccount").textContent = signedIn ? state.user.email : "Account";
+}
+
+async function authenticateAccount(event, register) {
+  event.preventDefault();
+  const credentials = {
+    email: $("accountEmail").value.trim(),
+    password: $("accountPassword").value,
+  };
+  try {
+    state.user = await api(register ? "/auth/register" : "/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(credentials),
+    });
+    $("accountPassword").value = "";
+    renderAccount();
+    showNotice(register ? "Account created." : "Signed in.", "success", 2400);
+  } catch (error) {
+    showNotice(error.message, "error");
+  }
+}
+
+async function logoutAccount() {
+  try {
+    await api("/auth/logout", { method: "POST" });
+    state.user = null;
+    renderAccount();
+    showNotice("Signed out.", "success", 2400);
+  } catch (error) {
+    showNotice(error.message, "error");
+  }
 }
 
 async function waitForJob(job, onProgress) {
