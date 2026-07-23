@@ -454,6 +454,41 @@ async function analyzeMarkets() {
 function renderComparisonAnalysis(comparison) {
   const container = $("analysisContent");
   container.replaceChildren();
+  if (comparison.synthesis) {
+    const synthesis = document.createElement("section");
+    synthesis.className = "synthesis";
+    const heading = document.createElement("div");
+    heading.className = "synthesis-heading";
+    heading.innerHTML = "<span>Consensus synthesis</span><p></p>";
+    heading.querySelector("p").textContent = comparison.synthesis.method;
+    const weights = document.createElement("div");
+    weights.className = "synthesis-weights";
+    Object.entries(comparison.synthesis.provider_weights).forEach(([provider, weight]) => {
+      const item = document.createElement("span");
+      item.textContent = `${provider} ${formatPercent(weight)}`;
+      weights.append(item);
+    });
+    const markets = document.createElement("div");
+    markets.className = "synthesis-grid";
+    comparison.synthesis.markets.forEach((market) => {
+      const card = document.createElement("article");
+      card.className = "synthesis-card";
+      card.innerHTML = `
+        <span class="comparison-label">${market.disagreement} disagreement</span>
+        <h3></h3>
+        <div class="comparison-facts">
+          <div><span>Weighted consensus</span><strong>${formatPercent(market.weighted_probability)}</strong></div>
+          <div><span>Median</span><strong>${formatPercent(market.median_probability)}</strong></div>
+          <div><span>Provider range</span><strong>${formatPercent(market.minimum_probability)}–${formatPercent(market.maximum_probability)}</strong></div>
+          <div><span>Market</span><strong>${formatPercent(market.market_probability)}</strong></div>
+        </div>
+      `;
+      card.querySelector("h3").textContent = market.market_title;
+      markets.append(card);
+    });
+    synthesis.append(heading, weights, markets);
+    container.append(synthesis);
+  }
   const grid = document.createElement("div");
   grid.className = "provider-comparison";
   comparison.results.forEach((analysis) => {

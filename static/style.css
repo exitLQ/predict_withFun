@@ -204,6 +204,15 @@ blockquote { margin: 12px 0 30px; padding: 24px 28px; background: var(--lime); c
 .provider-result .analysis-summary { grid-template-columns: 1fr; padding: 18px; }
 .provider-result .analysis-summary p { font-size: 15px; }
 .provider-result .analysis-grid { grid-template-columns: 1fr; }
+.synthesis { margin-bottom: 28px; padding: 24px; border: 1px solid rgba(200,244,93,.32); border-radius: var(--radius); background: rgba(200,244,93,.035); }
+.synthesis-heading { display: grid; grid-template-columns: 180px 1fr; gap: 20px; }
+.synthesis-heading span { color: var(--lime); font: 11px "DM Mono", monospace; text-transform: uppercase; }
+.synthesis-heading p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.synthesis-weights { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+.synthesis-weights span { padding: 6px 9px; border: 1px solid var(--line); border-radius: 100px; color: var(--muted); font: 10px "DM Mono", monospace; text-transform: uppercase; }
+.synthesis-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.synthesis-card { padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.synthesis-card h3 { min-height: 48px; margin: 10px 0 18px; font-size: 15px; line-height: 1.45; }
 .sources { margin-top: 24px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); display: grid; gap: 10px; }
 .sources h3 { margin: 0 0 8px; font-size: 16px; }
 .sources a { color: var(--muted); text-decoration: none; font-size: 13px; overflow-wrap: anywhere; }
@@ -225,6 +234,7 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
   .analysis-grid { grid-template-columns: 1fr; }
   .comparison-market-grid { grid-template-columns: 1fr; }
   .provider-comparison { grid-template-columns: 1fr; }
+  .synthesis-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
   .shell { width: min(100% - 24px, 1240px); }
@@ -242,6 +252,7 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
   .market-card { grid-template-columns: 28px 1fr; }
   .market-card .probability, .card-actions { grid-column: 2 / -1; }
   .analysis-summary { grid-template-columns: 1fr; }
+  .synthesis-heading { grid-template-columns: 1fr; }
   .comparison { grid-template-columns: 1fr; }
   .comparison div { border-bottom: 1px solid var(--line); }
   footer { align-items: flex-start; flex-direction: column; justify-content: center; gap: 8px; }

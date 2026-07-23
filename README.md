@@ -27,6 +27,7 @@ estimates side by side.
 - [Caching, fallback, and rate limits](#caching-fallback-and-rate-limits)
 - [Persistent analysis history](#persistent-analysis-history)
 - [Accuracy tracking](#accuracy-tracking)
+- [Provider synthesis](#provider-synthesis)
 - [Cost estimates](#cost-estimates)
 - [API reference](#api-reference)
 - [Data models](#data-models)
@@ -69,6 +70,7 @@ estimates side by side.
 - Caches Polymarket data for five minutes
 - Stores completed live analyses in PostgreSQL or local SQLite
 - Scores resolved forecasts with Brier score and compares AI with the market
+- Builds an accuracy-weighted consensus from provider comparison results
 
 ### Browser tools
 
@@ -444,6 +446,37 @@ certain forecast scores `1`. The accuracy dashboard reports per provider:
 Historical forecasts are never rewritten when market prices change. Only the
 eventual outcome and derived score are added.
 
+## Provider synthesis
+
+Every successful provider comparison includes a deterministic synthesis. For
+each market, it calculates:
+
+- arithmetic mean and median provider probability;
+- minimum, maximum, and full provider spread;
+- accuracy-weighted consensus probability;
+- disagreement level;
+- consensus valuation relative to the market;
+- participating providers and combined unique risks.
+
+Provider weights are based on inverse historical mean Brier score. Lower Brier
+scores receive more weight. A provider without resolved forecasts receives a
+neutral provisional Brier score of `0.25`. Scores are floored at `0.05` before
+inversion so a small sample of perfect forecasts cannot create an unbounded
+weight. The raw weights are normalized to sum to `1`.
+
+| Spread between highest and lowest estimate | Disagreement |
+| --- | --- |
+| Up to 5 percentage points | `low` |
+| More than 5 and up to 15 percentage points | `moderate` |
+| More than 15 percentage points | `high` |
+
+The weighted probability is compared with the current market probability. A
+difference of at least five percentage points is classified as `undervalued`
+or `overvalued`; smaller differences are classified as `fair`.
+
+Synthesis is computed locally from validated results and does not make another
+paid AI request.
+
 ## Cost estimates
 
 The estimated cost is:
@@ -611,7 +644,9 @@ Response shape:
 ```
 
 Each object in `results` is a complete `AnalysisResult`. The abbreviated
-example omits its other required fields for readability.
+example omits its other required fields for readability. The response also
+contains `synthesis`, including normalized `provider_weights` and one
+consensus record per analyzed market.
 
 ### `POST /api/analyze/{category_id}/{market_slug}`
 
@@ -779,6 +814,7 @@ The test suite covers:
 - usage and cost calculation.
 - persistent history round trips and skipped demo/cache records;
 - resolution parsing, Brier scoring, and provider accuracy summaries.
+- provider weighting, consensus probabilities, and disagreement classification.
 
 GitHub Actions installs `requirements-dev.txt`, runs Ruff, and executes pytest
 on every configured workflow trigger. A red workflow means at least one lint
@@ -879,6 +915,7 @@ scaling, use a shared cache and limiter. Also consider:
 │   ├── app.js               # Browser state, API calls, and rendering
 │   └── style.css            # Responsive visual design
 ├── tests/                   # Automated test suite
+├── synthesis.py             # Provider consensus and weighting
 ├── Dockerfile               # Production container image
 ├── render.yaml              # Render Blueprint
 ├── requirements.txt         # Production dependencies
@@ -924,6 +961,13 @@ scaling, use a shared cache and limiter. Also consider:
 - calculates usage and estimated cost;
 - caches analysis results;
 - applies provider fallback.
+
+`synthesis.py`:
+
+- derives provider weights from resolved forecast accuracy;
+- aggregates provider estimates without another API request;
+- classifies disagreement and consensus valuation;
+- combines unique provider risks.
 
 ### Frontend responsibilities
 

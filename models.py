@@ -77,6 +77,29 @@ class AnalysisResult(BaseModel):
 class ProviderComparison(BaseModel):
     results: list[AnalysisResult] = Field(default_factory=list)
     errors: dict[str, str] = Field(default_factory=dict)
+    synthesis: "ComparisonSynthesis | None" = None
+
+
+class ConsensusMarket(BaseModel):
+    market_slug: str
+    market_title: str
+    market_probability: float = Field(ge=0, le=1)
+    mean_probability: float = Field(ge=0, le=1)
+    median_probability: float = Field(ge=0, le=1)
+    weighted_probability: float = Field(ge=0, le=1)
+    minimum_probability: float = Field(ge=0, le=1)
+    maximum_probability: float = Field(ge=0, le=1)
+    spread: float = Field(ge=0, le=1)
+    disagreement: Literal["low", "moderate", "high"]
+    assessment: Literal["undervalued", "fair", "overvalued"]
+    providers: list[Literal["openai", "grok", "claude"]]
+    shared_risks: list[str] = Field(default_factory=list)
+
+
+class ComparisonSynthesis(BaseModel):
+    method: str
+    provider_weights: dict[str, float]
+    markets: list[ConsensusMarket] = Field(default_factory=list)
 
 
 class AnalysisHistoryItem(BaseModel):

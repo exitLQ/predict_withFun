@@ -38,6 +38,7 @@ from polymarket_client import (
     fetch_price_history,
     get_top_markets_for_category,
 )
+from synthesis import synthesize_comparison
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -188,6 +189,7 @@ async def compare_category_markets(
     await gather(
         *(run_in_threadpool(save_analysis, result) for result in successful)
     )
+    accuracy = await run_in_threadpool(accuracy_summaries)
     return ProviderComparison(
         results=successful,
         errors={
@@ -195,6 +197,7 @@ async def compare_category_markets(
             for provider, result in outcomes
             if isinstance(result, Exception)
         },
+        synthesis=synthesize_comparison(successful, accuracy),
     )
 
 
