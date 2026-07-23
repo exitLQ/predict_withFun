@@ -1,5 +1,8 @@
 # predict_withFun
 
+[![CI](https://github.com/exitLQ/predict_withFun/actions/workflows/ci.yml/badge.svg)](https://github.com/exitLQ/predict_withFun/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 predict_withFun is a web application for exploring active Polymarket prediction
 markets and comparing market prices with source-backed AI research.
 
@@ -46,6 +49,8 @@ estimates side by side.
 - [Deployment](#deployment)
 - [Architecture](#architecture)
 - [Security and privacy](#security-and-privacy)
+- [Contributing and community](#contributing-and-community)
+- [License](#license)
 - [Troubleshooting](#troubleshooting)
 - [Known limitations](#known-limitations)
 
@@ -1534,6 +1539,9 @@ are shared. Also consider:
 .
 ├── .env.example             # Local configuration template
 ├── .github/
+│   ├── ISSUE_TEMPLATE/      # Guided bug, feature, and security routing
+│   ├── CODEOWNERS           # Default maintainer review ownership
+│   ├── PULL_REQUEST_TEMPLATE.md
 │   └── workflows/           # GitHub Actions CI
 ├── e2e/                     # Mocked Playwright browser journeys
 ├── app.py                   # FastAPI routes, limits, and static delivery
@@ -1563,10 +1571,15 @@ are shared. Also consider:
 │   └── style.css            # Responsive visual design
 ├── tests/                   # Automated test suite
 ├── synthesis.py             # Provider consensus and weighting
+├── CODE_OF_CONDUCT.md       # Community behavior and enforcement
+├── CONTRIBUTING.md          # Contribution and verification workflow
 ├── Dockerfile               # Production container image
+├── LICENSE                  # MIT license
 ├── render.yaml              # Render Blueprint
 ├── requirements.txt         # Production dependencies
 ├── requirements-dev.txt     # Development and test dependencies
+├── SECURITY.md              # Private vulnerability reporting policy
+├── SUPPORT.md               # Best-effort support guidance
 └── pyproject.toml           # Ruff and pytest configuration
 ```
 
@@ -1752,6 +1765,40 @@ If a key is accidentally committed:
 3. Remove the secret from Git history if necessary.
 4. Update deployment secrets.
 5. Review provider usage for unauthorized requests.
+
+## Contributing and community
+
+Contributions are welcome through focused issues and pull requests:
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) describes setup, quality gates,
+  migration requirements, UI expectations, and the pull-request workflow.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) defines respectful participation
+  and enforcement.
+- [`SECURITY.md`](SECURITY.md) defines supported code and private vulnerability
+  reporting through GitHub Security Advisories.
+- [`SUPPORT.md`](SUPPORT.md) explains what information to collect and where to
+  request best-effort help.
+
+GitHub issue forms collect reproducible bug details and focused feature
+proposals while warning against secrets and personal data. Blank issues are
+disabled, security reporters are directed to the private advisory form, and
+the pull-request template requires tests, documentation, privacy review,
+reversible migrations, accessibility, and CSP compatibility where applicable.
+`CODEOWNERS` requests review from `@exitLQ`.
+
+Never post API keys, passwords, session cookies, Sentry DSNs, database/Redis
+URLs, user data, or private provider responses in a public issue or pull
+request. Use synthetic examples and sanitized logs.
+
+## License
+
+The source code is available under the [MIT License](LICENSE), Copyright
+(c) 2026 exitLQ. Contributions are accepted under the same license.
+
+The license does not grant rights to third-party trademarks, Polymarket market
+content, provider responses, external sources, or dependencies. Those remain
+subject to their respective owners' terms and licenses. The software is
+provided without warranty and is not financial advice.
 
 ## Troubleshooting
 
