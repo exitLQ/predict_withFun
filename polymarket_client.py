@@ -1,5 +1,7 @@
 import json
+import os
 import time
+from collections import OrderedDict
 from typing import Any
 
 import requests
@@ -19,7 +21,7 @@ _session.headers.update(
         "User-Agent": "predict-with-fun/2.0 (+https://github.com/exitLQ/predict_withFun)",
     }
 )
-_cache: dict[str, tuple[float, Any]] = {}
+_cache: OrderedDict[str, tuple[float, Any]] = OrderedDict()
 
 
 class PolymarketError(RuntimeError):
@@ -30,7 +32,10 @@ def _get(path: str, params: dict[str, Any]) -> Any:
     cache_key = f"{path}:{json.dumps(params, sort_keys=True)}"
     cached = _cache.get(cache_key)
     if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
+        _cache.move_to_end(cache_key)
         return cached[1]
+    if cached:
+        _cache.pop(cache_key, None)
 
     try:
         response = _session.get(
@@ -44,6 +49,10 @@ def _get(path: str, params: dict[str, Any]) -> Any:
         raise PolymarketError("Polymarket is currently unavailable.") from exc
 
     _cache[cache_key] = (time.monotonic(), data)
+    _cache.move_to_end(cache_key)
+    maximum = max(1, int(os.getenv("POLYMARKET_CACHE_MAX_ENTRIES", "512")))
+    while len(_cache) > maximum:
+        _cache.popitem(last=False)
     return data
 
 

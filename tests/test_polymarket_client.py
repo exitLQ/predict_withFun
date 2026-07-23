@@ -97,3 +97,25 @@ def test_ambiguous_market_is_not_treated_as_resolved(monkeypatch):
     )
 
     assert polymarket_client.fetch_market_resolution("ambiguous") is None
+
+
+def test_api_cache_is_bounded(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return []
+
+    monkeypatch.setenv("POLYMARKET_CACHE_MAX_ENTRIES", "2")
+    monkeypatch.setattr(
+        polymarket_client._session,
+        "get",
+        lambda *args, **kwargs: Response(),
+    )
+    polymarket_client._cache.clear()
+
+    for identifier in ("one", "two", "three"):
+        polymarket_client._get("/tags", {"id": identifier})
+
+    assert len(polymarket_client._cache) == 2

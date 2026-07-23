@@ -2,6 +2,7 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+import auth
 import database
 from models import AnalysisResult, MarketAnalysis
 
@@ -27,14 +28,18 @@ def test_analysis_history_round_trip(monkeypatch):
     )
 
     try:
-        record_id = database.save_analysis(result)
-        history = database.list_analyses()
-        restored = database.get_analysis(record_id)
+        owner = auth.create_user("owner@example.com", "long-test-password")
+        other = auth.create_user("other@example.com", "long-test-password")
+        record_id = database.save_analysis(result, owner.id)
+        history = database.list_analyses(user_id=owner.id)
+        restored = database.get_analysis(record_id, owner.id)
 
         assert record_id is not None
         assert history[0].provider == "claude"
         assert restored is not None
         assert restored.summary == "Saved analysis"
+        assert database.list_analyses(user_id=other.id) == []
+        assert database.get_analysis(record_id, other.id) is None
         assert database.unresolved_market_slugs() == ["saved-market"]
         assert database.resolve_market_forecasts("saved-market", 1.0) == 1
         score = database.list_forecast_scores()[0]
@@ -56,7 +61,7 @@ def test_analysis_history_round_trip(monkeypatch):
                     "PRAGMA index_list('forecast_scores')"
                 )
             }
-        assert revision == ("0002",)
+        assert revision == ("0003",)
         assert "forecast_scores_market_slug_idx" in indexes
     finally:
         Path(database_path).unlink(missing_ok=True)

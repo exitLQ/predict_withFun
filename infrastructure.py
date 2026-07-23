@@ -6,16 +6,20 @@ from typing import Any
 
 _redis_client: Any | None = None
 _redis_checked = False
+_redis_retry_at = 0.0
 
 
 def redis_client() -> Any | None:
-    global _redis_checked, _redis_client
-    if _redis_checked:
+    global _redis_checked, _redis_client, _redis_retry_at
+    if _redis_client is not None:
         return _redis_client
-    _redis_checked = True
     redis_url = os.getenv("REDIS_URL")
     if not redis_url:
         return None
+    now = time.monotonic()
+    if _redis_checked and now < _redis_retry_at:
+        return None
+    _redis_checked = True
     try:
         import redis
 
@@ -27,8 +31,11 @@ def redis_client() -> Any | None:
         )
         client.ping()
         _redis_client = client
+        _redis_retry_at = 0.0
     except Exception:
         _redis_client = None
+        retry_seconds = max(1, int(os.getenv("REDIS_RETRY_SECONDS", "30")))
+        _redis_retry_at = now + retry_seconds
     return _redis_client
 
 

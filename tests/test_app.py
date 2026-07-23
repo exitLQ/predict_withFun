@@ -133,11 +133,11 @@ def test_analysis_history_endpoints(monkeypatch):
         estimated_cost_usd=0.01,
     )
     result = app.AnalysisResult(category="Politics", summary="Restored")
-    monkeypatch.setattr(app, "list_analyses", lambda limit: [item])
+    monkeypatch.setattr(app, "list_analyses", lambda limit, user_id: [item])
     monkeypatch.setattr(
         app,
         "get_analysis",
-        lambda record_id: result if record_id == "saved-id" else None,
+        lambda record_id, user_id: result if record_id == "saved-id" else None,
     )
 
     history = client.get("/api/analyses?limit=10")
@@ -148,6 +148,23 @@ def test_analysis_history_endpoints(monkeypatch):
     assert history.json()[0]["category"] == "Politics"
     assert restored.json()["summary"] == "Restored"
     assert missing.status_code == 404
+
+
+def test_authentication_attempts_are_rate_limited(monkeypatch):
+    monkeypatch.setenv("AUTH_ATTEMPTS_PER_HOUR", "1")
+    monkeypatch.setattr(app, "distributed_rate_limit_allowed", lambda *args: None)
+    monkeypatch.setattr(app, "authenticate", lambda *args: None)
+    app._auth_requests.clear()
+
+    credentials = {
+        "email": "limited@example.com",
+        "password": "long-test-password",
+    }
+    first = client.post("/api/auth/login", json=credentials)
+    second = client.post("/api/auth/login", json=credentials)
+
+    assert first.status_code == 401
+    assert second.status_code == 429
 
 
 def test_calibration_endpoint_validates_bins(monkeypatch):

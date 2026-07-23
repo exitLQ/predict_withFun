@@ -367,13 +367,15 @@ values supplied through environment variables.
 | `PROVIDER_FALLBACK` | `true` | Try another configured provider after an unavailable-provider error |
 | `ANALYSIS_CACHE_TTL` | `1800` | Analysis-cache lifetime in seconds |
 | `ANALYSIS_REQUESTS_PER_HOUR` | `5` | Maximum analysis requests per client IP and process |
+| `AUTH_ATTEMPTS_PER_HOUR` | `20` | Separate hourly login/registration limit per client IP and normalized account |
+| `POLYMARKET_CACHE_MAX_ENTRIES` | `512` | Maximum process-local Polymarket API cache entries |
 | `ENVIRONMENT` | `development` | Enables reload only when running `python app.py` in development |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1,testserver` | Comma-separated accepted hostnames; `*.example.com` wildcards are supported |
 | `HTTPS_REDIRECT` | `false` locally, `true` in production | Redirect trusted HTTP requests to HTTPS |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Proxy IPs Uvicorn may trust for forwarded scheme/client data |
-| `ADMIN_TOKEN` | `change-me` | Bearer token that protects admin metrics; required in production |
+| `ADMIN_TOKEN` | — | Bearer token that protects admin metrics; required in production |
 | `AUTH_REQUIRED` | `false` | Require an authenticated session for AI analysis and saved history |
-| `ALLOW_REGISTRATION` | `true` | Allow self-service creation of `user` accounts |
+| `ALLOW_REGISTRATION` | `false` | Allow self-service creation of `user` accounts |
 | `SESSION_TTL_HOURS` | `168` | Session lifetime, clamped from 1 to 720 hours |
 | `BOOTSTRAP_ADMIN_EMAIL` | — | Optional first administrator email |
 | `BOOTSTRAP_ADMIN_PASSWORD` | — | Optional first administrator password; minimum 12 characters |
@@ -388,6 +390,7 @@ values supplied through environment variables.
 | `PORT` | `8000` | HTTP port |
 | `DATABASE_URL` | `sqlite:///./predict_withfun.db` | PostgreSQL or SQLite connection URL |
 | `REDIS_URL` | — | Redis-compatible URL for shared infrastructure |
+| `REDIS_RETRY_SECONDS` | `30` | Delay before reconnecting after a failed Redis connection |
 | `BACKGROUND_QUEUE` | `local` | `local` thread jobs or external `rq` workers |
 | `LOCAL_JOB_WORKERS` | `3` | Maximum local background-job threads |
 | `JOB_TIMEOUT` | `600` | RQ job timeout in seconds |
@@ -446,6 +449,8 @@ do not update an existing password or role. After the admin exists, remove
 
 Passwords are never stored directly. The backend uses Python's `scrypt`
 implementation with a random 16-byte salt and constant-time verification.
+Login and registration apply separate per-IP and per-account hourly limits. The
+account identifier is hashed before it is used in a Redis rate-limit key.
 Login creates an opaque random session token; only its SHA-256 digest is stored
 in `user_sessions`. The browser receives:
 
@@ -540,7 +545,11 @@ estimated API cost.
 Important cache properties:
 
 - The local fallback cache is cleared whenever the process restarts.
+- The Polymarket response cache evicts least-recently-used entries after 512
+  entries by default.
 - Redis-backed entries are shared across application instances.
+- A failed Redis connection is retried after 30 seconds by default instead of
+  permanently disabling shared infrastructure for the process.
 - Changing the TTL does not persist existing entries.
 - The cache is not a historical-analysis database.
 
@@ -708,6 +717,7 @@ Production uses PostgreSQL through `DATABASE_URL`; local development defaults
 to a SQLite file so the application remains easy to run. The database stores:
 
 - creation time and unique record ID;
+- the creating user when authentication is enabled;
 - category and provider metadata;
 - complete validated analysis JSON;
 - market count and estimated request cost;
@@ -716,6 +726,11 @@ to a SQLite file so the application remains easy to run. The database stores:
 The schema and index are created automatically on first use. History can be
 listed with `GET /api/analyses` and an original result can be retrieved with
 `GET /api/analyses/{record_id}`.
+
+With `AUTH_REQUIRED=true`, history queries are restricted to records owned by
+the current user. Background comparison jobs carry the same owner and return
+`404` when another user attempts to poll them. Records created before ownership
+was introduced remain available only in public/backward-compatible mode.
 
 The web interface exposes the same history through a responsive archive with
 category search, provider filtering, selectable record limits, localized
@@ -756,6 +771,9 @@ compatible with PostgreSQL and SQLite, and be reviewed before deployment. The
 initial migration safely detects tables created by older predict_withFun
 versions, adds missing indexes, and then establishes Alembic's revision marker.
 Revision `0002` adds unique user accounts and expiring server-side sessions.
+Revision `0003` adds nullable analysis ownership, an owner index, and a foreign
+key to user accounts. Nullable ownership preserves existing public records
+during upgrades.
 
 Database access lazily applies pending migrations once per configured database
 URL as a safety net. The Docker entrypoint explicitly runs migrations before

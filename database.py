@@ -116,7 +116,7 @@ def admin_database_statistics() -> dict[str, Any]:
     }
 
 
-def save_analysis(result: AnalysisResult) -> str | None:
+def save_analysis(result: AnalysisResult, user_id: str | None = None) -> str | None:
     if result.demo or result.cached:
         return None
     initialize_database()
@@ -131,6 +131,7 @@ def save_analysis(result: AnalysisResult) -> str | None:
         len(result.markets),
         result.usage.estimated_cost_usd,
         result.model_dump_json(),
+        user_id,
     )
     placeholders = ", ".join([_placeholder()] * len(values))
     with _connection() as connection:
@@ -138,7 +139,7 @@ def save_analysis(result: AnalysisResult) -> str | None:
             f"""
             INSERT INTO analysis_history (
                 id, created_at, category, provider, requested_provider,
-                market_count, estimated_cost_usd, result_json
+                market_count, estimated_cost_usd, result_json, user_id
             ) VALUES ({placeholders})
             """,
             values,
@@ -171,19 +172,25 @@ def save_analysis(result: AnalysisResult) -> str | None:
     return record_id
 
 
-def list_analyses(limit: int = 50) -> list[AnalysisHistoryItem]:
+def list_analyses(
+    limit: int = 50,
+    user_id: str | None = None,
+) -> list[AnalysisHistoryItem]:
     initialize_database()
     placeholder = _placeholder()
     with _connection() as connection:
+        where = f"WHERE user_id = {placeholder}" if user_id else ""
+        parameters = (user_id, limit) if user_id else (limit,)
         rows = connection.execute(
             f"""
             SELECT id, created_at, category, provider, requested_provider,
                    market_count, estimated_cost_usd, resolved_outcome, brier_score
             FROM analysis_history
+            {where}
             ORDER BY created_at DESC
             LIMIT {placeholder}
             """,
-            (limit,),
+            parameters,
         ).fetchall()
     return [
         AnalysisHistoryItem(
@@ -201,12 +208,21 @@ def list_analyses(limit: int = 50) -> list[AnalysisHistoryItem]:
     ]
 
 
-def get_analysis(record_id: str) -> AnalysisResult | None:
+def get_analysis(
+    record_id: str,
+    user_id: str | None = None,
+) -> AnalysisResult | None:
     initialize_database()
     with _connection() as connection:
+        placeholder = _placeholder()
+        owner_clause = f" AND user_id = {placeholder}" if user_id else ""
+        parameters = (record_id, user_id) if user_id else (record_id,)
         row = connection.execute(
-            f"SELECT result_json FROM analysis_history WHERE id = {_placeholder()}",
-            (record_id,),
+            f"""
+            SELECT result_json FROM analysis_history
+            WHERE id = {placeholder}{owner_clause}
+            """,
+            parameters,
         ).fetchone()
     if not row:
         return None

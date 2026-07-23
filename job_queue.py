@@ -17,6 +17,7 @@ from structured_logging import get_logger, log_event
 _executor = ThreadPoolExecutor(max_workers=int(os.getenv("LOCAL_JOB_WORKERS", "3")))
 _futures: dict[str, Future] = {}
 _created_at: dict[str, float] = {}
+_owners: dict[str, str | None] = {}
 logger = get_logger("jobs")
 
 
@@ -30,21 +31,36 @@ def _purge_expired_local_jobs() -> None:
     for job_id in expired:
         _created_at.pop(job_id, None)
         _futures.pop(job_id, None)
+        _owners.pop(job_id, None)
 
 
 def _run_local(
     job_id: str,
     function: Callable[..., dict],
     args: tuple[Any, ...],
+    owner_id: str | None,
 ) -> dict:
-    store_job_status(job_id, {"id": job_id, "status": "running"})
+    store_job_status(
+        job_id,
+        {"id": job_id, "status": "running", "owner_id": owner_id},
+    )
     try:
         result = function(*args)
-        status = {"id": job_id, "status": "finished", "result": result}
+        status = {
+            "id": job_id,
+            "status": "finished",
+            "result": result,
+            "owner_id": owner_id,
+        }
         increment("jobs_finished")
         log_event(logger, logging.INFO, "job_finished", job_id=job_id)
     except Exception as exc:
-        status = {"id": job_id, "status": "failed", "error": str(exc)}
+        status = {
+            "id": job_id,
+            "status": "failed",
+            "error": str(exc),
+            "owner_id": owner_id,
+        }
         increment("jobs_failed")
         log_event(
             logger,
@@ -60,6 +76,7 @@ def _run_local(
 def submit_job(
     function: Callable[..., dict],
     *args: Any,
+    owner_id: str | None = None,
 ) -> JobStatus:
     increment("jobs_queued")
     _purge_expired_local_jobs()
@@ -70,6 +87,7 @@ def submit_job(
         job = Queue("predict_with_fun", connection=client).enqueue(
             function,
             *args,
+            meta={"owner_id": owner_id},
             job_timeout=int(os.getenv("JOB_TIMEOUT", "600")),
             result_ttl=int(os.getenv("JOB_RESULT_TTL", "3600")),
         )
@@ -81,13 +99,20 @@ def submit_job(
             queue="rq",
             task=function.__name__,
         )
-        return JobStatus(id=job.id, status="queued")
+        return JobStatus(id=job.id, status="queued", owner_id=owner_id)
 
     job_id = str(uuid.uuid4())
-    initial = {"id": job_id, "status": "queued"}
+    initial = {"id": job_id, "status": "queued", "owner_id": owner_id}
     store_job_status(job_id, initial)
     _created_at[job_id] = time.monotonic()
-    _futures[job_id] = _executor.submit(_run_local, job_id, function, args)
+    _owners[job_id] = owner_id
+    _futures[job_id] = _executor.submit(
+        _run_local,
+        job_id,
+        function,
+        args,
+        owner_id,
+    )
     log_event(
         logger,
         logging.INFO,
@@ -107,7 +132,11 @@ def get_job_status(job_id: str) -> JobStatus | None:
     future = _futures.get(job_id)
     if future is not None:
         if not future.done():
-            return JobStatus(id=job_id, status="running")
+            return JobStatus(
+                id=job_id,
+                status="running",
+                owner_id=_owners.get(job_id),
+            )
         return JobStatus.model_validate(future.result())
 
     client = redis_client()
@@ -120,15 +149,22 @@ def get_job_status(job_id: str) -> JobStatus | None:
             return None
         status = job.get_status(refresh=True)
         if status == "finished":
-            return JobStatus(id=job_id, status="finished", result=job.result)
+            return JobStatus(
+                id=job_id,
+                status="finished",
+                result=job.result,
+                owner_id=job.meta.get("owner_id"),
+            )
         if status in {"failed", "stopped", "canceled"}:
             return JobStatus(
                 id=job_id,
                 status="failed",
                 error=job.exc_info or "Background job failed.",
+                owner_id=job.meta.get("owner_id"),
             )
         return JobStatus(
             id=job_id,
             status="running" if status == "started" else "queued",
+            owner_id=job.meta.get("owner_id"),
         )
     return None

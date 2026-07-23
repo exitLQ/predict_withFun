@@ -5,6 +5,7 @@ import secrets
 import time
 import uuid
 from collections import defaultdict, deque
+from hashlib import sha256
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -94,6 +95,7 @@ if https_redirect_enabled():
     app.add_middleware(HTTPSRedirectMiddleware)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 _analysis_requests: dict[str, deque[float]] = defaultdict(deque)
+_auth_requests: dict[str, deque[float]] = defaultdict(deque)
 
 
 @app.middleware("http")
@@ -167,6 +169,31 @@ def _enforce_analysis_limit(request: Request) -> None:
             detail=f"Analysis limit reached ({limit} per hour). Try again later.",
         )
     requests.append(now)
+
+
+def _enforce_auth_limit(request: Request, email: str) -> None:
+    limit = max(1, int(os.getenv("AUTH_ATTEMPTS_PER_HOUR", "20")))
+    client = request.client.host if request.client else "unknown"
+    account = sha256(email.strip().casefold().encode()).hexdigest()[:16]
+    for identity in (f"auth-ip:{client}", f"auth-account:{account}"):
+        distributed = distributed_rate_limit_allowed(identity, limit)
+        if distributed is False:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many authentication attempts. Try again later.",
+            )
+        if distributed is True:
+            continue
+        now = time.time()
+        requests = _auth_requests[identity]
+        while requests and now - requests[0] > 3600:
+            requests.popleft()
+        if len(requests) >= limit:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many authentication attempts. Try again later.",
+            )
+        requests.append(now)
 
 
 async def _category_or_404(category_id: str) -> Category:
@@ -323,9 +350,14 @@ def _set_session_cookies(
 
 
 @app.post("/api/auth/register", response_model=UserProfile)
-async def register(credentials: AuthCredentials, response: Response) -> UserProfile:
+async def register(
+    credentials: AuthCredentials,
+    request: Request,
+    response: Response,
+) -> UserProfile:
     if os.getenv("ALLOW_REGISTRATION", "false").casefold() != "true":
         raise HTTPException(status_code=403, detail="Registration is disabled.")
+    _enforce_auth_limit(request, credentials.email)
     try:
         user = await run_in_threadpool(
             create_user,
@@ -340,7 +372,12 @@ async def register(credentials: AuthCredentials, response: Response) -> UserProf
 
 
 @app.post("/api/auth/login", response_model=UserProfile)
-async def login(credentials: AuthCredentials, response: Response) -> UserProfile:
+async def login(
+    credentials: AuthCredentials,
+    request: Request,
+    response: Response,
+) -> UserProfile:
+    _enforce_auth_limit(request, credentials.email)
     try:
         user = await run_in_threadpool(
             authenticate,
@@ -447,7 +484,7 @@ async def analyze_category_markets(
     limit: int = Query(default=10, ge=1, le=10),
     provider: str = Query(default="openai", pattern="^(openai|grok|claude)$"),
 ) -> AnalysisResult:
-    await _require_analysis_access(request)
+    user = await _require_analysis_access(request)
     _enforce_analysis_limit(request)
     try:
         category = await _category_or_404(category_id)
@@ -457,7 +494,7 @@ async def analyze_category_markets(
         result = await run_in_threadpool(
             analyze_markets, markets, category.name, provider
         )
-        await run_in_threadpool(save_analysis, result)
+        await run_in_threadpool(save_analysis, result, user.id if user else None)
         return result
     except PolymarketError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -471,10 +508,15 @@ async def compare_category_markets(
     category_id: str = Query(..., min_length=1),
     limit: int = Query(default=10, ge=1, le=10),
 ) -> ProviderComparison:
-    await _require_analysis_access(request)
+    user = await _require_analysis_access(request)
     _enforce_analysis_limit(request)
     try:
-        data = await run_in_threadpool(run_comparison_task, category_id, limit)
+        data = await run_in_threadpool(
+            run_comparison_task,
+            category_id,
+            limit,
+            user.id if user else None,
+        )
         return ProviderComparison.model_validate(data)
     except (PolymarketError, ValueError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -492,7 +534,7 @@ async def analyze_single_market(
     market_slug: str,
     provider: str = Query(default="openai", pattern="^(openai|grok|claude)$"),
 ) -> AnalysisResult:
-    await _require_analysis_access(request)
+    user = await _require_analysis_access(request)
     _enforce_analysis_limit(request)
     try:
         category = await _category_or_404(category_id)
@@ -505,7 +547,7 @@ async def analyze_single_market(
         result = await run_in_threadpool(
             analyze_markets, [market], category.name, provider
         )
-        await run_in_threadpool(save_analysis, result)
+        await run_in_threadpool(save_analysis, result, user.id if user else None)
         return result
     except PolymarketError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -518,16 +560,26 @@ async def get_analysis_history(
     request: Request,
     limit: int = Query(default=25, ge=1, le=100),
 ) -> list[AnalysisHistoryItem]:
+    user = None
     if os.getenv("AUTH_REQUIRED", "false").casefold() == "true":
-        await _require_user(request)
-    return await run_in_threadpool(list_analyses, limit)
+        user = await _require_user(request)
+    return await run_in_threadpool(
+        list_analyses,
+        limit,
+        user.id if user else None,
+    )
 
 
 @app.get("/api/analyses/{record_id}", response_model=AnalysisResult)
 async def get_saved_analysis(request: Request, record_id: str) -> AnalysisResult:
+    user = None
     if os.getenv("AUTH_REQUIRED", "false").casefold() == "true":
-        await _require_user(request)
-    result = await run_in_threadpool(get_analysis, record_id)
+        user = await _require_user(request)
+    result = await run_in_threadpool(
+        get_analysis,
+        record_id,
+        user.id if user else None,
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="Analysis not found.")
     return result
@@ -568,9 +620,15 @@ async def submit_comparison_job(
     category_id: str = Query(..., min_length=1),
     limit: int = Query(default=10, ge=1, le=10),
 ) -> JobStatus:
-    await _require_analysis_access(request)
+    user = await _require_analysis_access(request)
     _enforce_analysis_limit(request)
-    return submit_job(run_comparison_task, category_id, limit)
+    return submit_job(
+        run_comparison_task,
+        category_id,
+        limit,
+        user.id if user else None,
+        owner_id=user.id if user else None,
+    )
 
 
 @app.post("/api/jobs/accuracy-sync", response_model=JobStatus)
@@ -579,16 +637,26 @@ async def submit_accuracy_sync_job(
     limit: int = Query(default=100, ge=1, le=500),
 ) -> JobStatus:
     await _authorize_admin(request, csrf=True)
-    return submit_job(run_accuracy_sync_task, limit)
+    user = await _current_user(request)
+    return submit_job(
+        run_accuracy_sync_task,
+        limit,
+        owner_id=user.id if user else None,
+    )
 
 
 @app.get("/api/jobs/{job_id}", response_model=JobStatus)
 async def read_job_status(request: Request, job_id: str) -> JobStatus:
-    if os.getenv("AUTH_REQUIRED", "false").casefold() == "true":
-        await _require_user(request)
     status = get_job_status(job_id)
     if status is None:
         raise HTTPException(status_code=404, detail="Background job not found.")
+    if os.getenv("AUTH_REQUIRED", "false").casefold() == "true":
+        if status.owner_id is None:
+            await _authorize_admin(request)
+        else:
+            user = await _require_user(request)
+            if user.id != status.owner_id:
+                raise HTTPException(status_code=404, detail="Background job not found.")
     return status
 
 

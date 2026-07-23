@@ -18,7 +18,11 @@ from polymarket_client import (
 from synthesis import synthesize_comparison
 
 
-def run_comparison_task(category_id: str, limit: int) -> dict:
+def run_comparison_task(
+    category_id: str,
+    limit: int,
+    user_id: str | None = None,
+) -> dict:
     category = next(
         (item for item in fetch_categories() if item.id == category_id),
         None,
@@ -61,7 +65,7 @@ def run_comparison_task(category_id: str, limit: int) -> dict:
         result for _, result in outcomes if isinstance(result, AnalysisResult)
     ]
     for result in successful:
-        save_analysis(result)
+        save_analysis(result, user_id)
     comparison = ProviderComparison(
         results=successful,
         errors={

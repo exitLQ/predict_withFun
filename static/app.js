@@ -158,13 +158,13 @@ async function logoutAccount() {
   }
 }
 
-async function waitForJob(job, onProgress) {
+async function waitForJob(job, onProgress, options = {}) {
   for (let attempt = 0; attempt < 300; attempt += 1) {
     if (job.status === "finished") return job.result;
     if (job.status === "failed") throw new Error(job.error || "Background job failed.");
     if (onProgress) onProgress(job.status);
     await new Promise((resolve) => window.setTimeout(resolve, 1000));
-    job = await api(`/jobs/${encodeURIComponent(job.id)}`);
+    job = await api(`/jobs/${encodeURIComponent(job.id)}`, options);
   }
   throw new Error("Background job timed out.");
 }
@@ -350,10 +350,12 @@ async function syncAccuracy() {
   button.disabled = true;
   button.textContent = "Checking …";
   try {
-    const job = await api("/jobs/accuracy-sync", { method: "POST" });
+    const token = $("adminToken").value.trim();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const job = await api("/jobs/accuracy-sync", { method: "POST", headers });
     const result = await waitForJob(job, (status) => {
       button.textContent = status === "queued" ? "Queued …" : "Checking …";
-    });
+    }, { headers });
     showNotice(
       `Checked ${result.checked_markets} markets · scored ${result.scored_forecasts} forecasts.`,
       "success",
@@ -694,7 +696,11 @@ async function showHistory(market, wrapper) {
     panel.replaceChildren();
     const heading = document.createElement("div");
     heading.className = "history-heading";
-    heading.innerHTML = `<span>One-month price history · ${market.outcomes[0]?.title || "Primary outcome"}</span><strong>${formatPercent(history.at(-1).price)}</strong>`;
+    const headingLabel = document.createElement("span");
+    const headingValue = document.createElement("strong");
+    headingLabel.textContent = `One-month price history · ${market.outcomes[0]?.title || "Primary outcome"}`;
+    headingValue.textContent = formatPercent(history.at(-1).price);
+    heading.append(headingLabel, headingValue);
     const canvas = document.createElement("canvas");
     canvas.width = 1000;
     canvas.height = 240;

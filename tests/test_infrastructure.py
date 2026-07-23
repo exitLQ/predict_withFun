@@ -1,4 +1,6 @@
+import sys
 import time
+from types import SimpleNamespace
 
 import infrastructure
 import job_queue
@@ -55,3 +57,51 @@ def test_local_background_job_finishes(monkeypatch):
     assert status is not None
     assert status.status == "finished"
     assert status.result == {"finished": True}
+
+
+def test_local_background_job_preserves_owner(monkeypatch):
+    monkeypatch.setattr(infrastructure, "_redis_checked", True)
+    monkeypatch.setattr(infrastructure, "_redis_client", None)
+    monkeypatch.setattr(job_queue, "redis_client", lambda: None)
+    monkeypatch.setattr(job_queue, "load_job_status", lambda _: None)
+
+    job = job_queue.submit_job(_successful_job, owner_id="user-1")
+    status = job_queue.get_job_status(job.id)
+
+    assert job.owner_id == "user-1"
+    assert status is not None
+    assert status.owner_id == "user-1"
+
+
+def test_redis_connection_is_retried_after_failure(monkeypatch):
+    calls = {"count": 0}
+
+    class Client:
+        def __init__(self, fails):
+            self.fails = fails
+
+        def ping(self):
+            if self.fails:
+                raise ConnectionError("temporary")
+            return True
+
+    class Redis:
+        @staticmethod
+        def from_url(*args, **kwargs):
+            calls["count"] += 1
+            return Client(calls["count"] == 1)
+
+    clock = {"now": 100.0}
+    monkeypatch.setenv("REDIS_URL", "redis://example")
+    monkeypatch.setenv("REDIS_RETRY_SECONDS", "5")
+    monkeypatch.setitem(sys.modules, "redis", SimpleNamespace(Redis=Redis))
+    monkeypatch.setattr(infrastructure.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(infrastructure, "_redis_client", None)
+    monkeypatch.setattr(infrastructure, "_redis_checked", False)
+    monkeypatch.setattr(infrastructure, "_redis_retry_at", 0.0)
+
+    assert infrastructure.redis_client() is None
+    assert infrastructure.redis_client() is None
+    clock["now"] = 106.0
+    assert infrastructure.redis_client() is not None
+    assert calls["count"] == 2

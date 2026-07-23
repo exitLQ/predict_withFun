@@ -172,6 +172,7 @@ class JobStatus(BaseModel):
     status: Literal["queued", "running", "finished", "failed"]
     result: dict[str, Any] | None = None
     error: str | None = None
+    owner_id: str | None = Field(default=None, exclude=True)
 
 
 class HealthResponse(BaseModel):
