@@ -1,7 +1,8 @@
 # predict_withFun
 
 predict_withFun displays the highest-volume active Polymarket markets in a
-category and uses OpenAI to provide structured context for their probabilities.
+category and uses selectable AI providers to add structured context to their
+probabilities.
 
 > AI-generated results are for informational purposes only and are not
 > financial advice.
@@ -13,7 +14,7 @@ category and uses OpenAI to provide structured context for their probabilities.
 - Volume, liquidity, and implied probabilities
 - Structured AI analysis through the OpenAI Responses API
 - Live web research with source links for current evidence
-- Selectable OpenAI web research or Grok real-time X research
+- Selectable OpenAI web research, Grok real-time X research, or Claude web research
 - One-click analysis and one-month price history for individual markets
 - Instant title search plus volume, liquidity, and probability sorting
 - Device-local watchlist stored in the browser
@@ -27,7 +28,8 @@ category and uses OpenAI to provide structured context for their probabilities.
 
 ## Run locally
 
-Requirements: Python 3.11 or newer and an OpenAI API key.
+Requirements: Python 3.11 or newer. Add an API key for any provider you want
+to use; demo mode works without one.
 
 ```bash
 python -m venv .venv
@@ -50,8 +52,8 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-On Windows, you can manually copy `.env.example` to `.env`. Add your key as
-`OPENAI_API_KEY`. The `.env` file is excluded from version control.
+On Windows, you can manually copy `.env.example` to `.env`. Add one or more
+provider keys. The `.env` file is excluded from version control.
 
 ```bash
 uvicorn app:app --reload
@@ -69,6 +71,8 @@ Open <http://localhost:8000>. Interactive API documentation is available at
 | `OPENAI_REASONING_EFFORT` | `low` | Reasoning level for analysis |
 | `XAI_API_KEY` | — | Required for Grok and real-time X research |
 | `XAI_MODEL` | `grok-4.5` | Grok model used for X research |
+| `ANTHROPIC_API_KEY` | — | Required for Claude web research |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5` | Claude model used for analysis |
 | `DEMO_MODE` | `true` | Return a market-price demo when no API key is set |
 | `ANALYSIS_REQUESTS_PER_HOUR` | `5` | Analysis limit per client IP |
 | `HOST` | `0.0.0.0` | Server address |
@@ -79,11 +83,11 @@ Open <http://localhost:8000>. Interactive API documentation is available at
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/health` | Service and OpenAI configuration status |
+| `GET` | `/api/health` | Service and provider configuration status |
 | `GET` | `/api/categories` | Available categories |
 | `GET` | `/api/markets/{id}?limit=10` | Top markets in a category |
-| `POST` | `/api/analyze?category_id={id}&provider=grok` | AI analysis |
-| `POST` | `/api/analyze/{category_id}/{market_slug}?provider=grok` | Single-market analysis |
+| `POST` | `/api/analyze?category_id={id}&provider=claude` | AI analysis (`openai`, `grok`, or `claude`) |
+| `POST` | `/api/analyze/{category_id}/{market_slug}?provider=claude` | Single-market analysis |
 | `GET` | `/api/history/{category_id}/{market_slug}` | Market price history |
 
 ## Tests
@@ -106,8 +110,15 @@ docker run --rm -p 8000:8000 -e OPENAI_API_KEY=sk-... predict-with-fun
 ### Render
 
 The repository includes a `render.yaml` file. Connect the repository in Render
-as a Blueprint and store `OPENAI_API_KEY` as a secret. Render will build the
-Docker image and monitor `/api/health`.
+as a Blueprint and store the desired provider keys as secrets. Render will
+build the Docker image and monitor `/api/health`.
+
+## Claude integration
+
+The application uses Claude through the Anthropic API with server-side web
+search and structured output. Claude Code is Anthropic's development agent;
+the deployed application itself connects directly to a Claude model through
+`ANTHROPIC_API_KEY`.
 
 ## Architecture
 

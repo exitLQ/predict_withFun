@@ -13,3 +13,7 @@ services:
         sync: false
       - key: XAI_MODEL
         value: grok-4.5
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5

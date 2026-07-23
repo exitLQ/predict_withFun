@@ -63,8 +63,13 @@ async def health() -> HealthResponse:
         status="ok",
         openai_configured=bool(os.getenv("OPENAI_API_KEY")),
         grok_configured=bool(os.getenv("XAI_API_KEY")),
+        claude_configured=bool(os.getenv("ANTHROPIC_API_KEY")),
         demo_mode=(
-            not bool(os.getenv("OPENAI_API_KEY") or os.getenv("XAI_API_KEY"))
+            not bool(
+                os.getenv("OPENAI_API_KEY")
+                or os.getenv("XAI_API_KEY")
+                or os.getenv("ANTHROPIC_API_KEY")
+            )
             and os.getenv("DEMO_MODE", "true").casefold() == "true"
         ),
     )
@@ -97,7 +102,7 @@ async def analyze_category_markets(
     request: Request,
     category_id: str = Query(..., min_length=1),
     limit: int = Query(default=10, ge=1, le=10),
-    provider: str = Query(default="openai", pattern="^(openai|grok)$"),
+    provider: str = Query(default="openai", pattern="^(openai|grok|claude)$"),
 ) -> AnalysisResult:
     _enforce_analysis_limit(request)
     try:
@@ -122,7 +127,7 @@ async def analyze_single_market(
     request: Request,
     category_id: str,
     market_slug: str,
-    provider: str = Query(default="openai", pattern="^(openai|grok)$"),
+    provider: str = Query(default="openai", pattern="^(openai|grok|claude)$"),
 ) -> AnalysisResult:
     _enforce_analysis_limit(request)
     try:

@@ -13,6 +13,7 @@ load_dotenv()
 DEFAULT_MODEL = "gpt-5.6-sol"
 DEFAULT_XAI_MODEL = "grok-4.5"
 XAI_BASE_URL = "https://api.x.ai/v1"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
 SYSTEM_INSTRUCTIONS = """
 Analyze prediction markets objectively and transparently. Separate observed
 market prices from your own estimate. Use web search for current, reliable
@@ -124,7 +125,8 @@ def _demo_analysis(
                 ],
                 reasoning=(
                     "Demo mode mirrors the current market probability. "
-                    "Configure OPENAI_API_KEY for a live, source-backed estimate."
+                    "Configure the selected provider for a live, "
+                    "source-backed estimate."
                 ),
             )
         )
@@ -140,12 +142,54 @@ def _demo_analysis(
     )
 
 
+def _analyze_with_claude(
+    markets: list[Market], category: str, api_key: str
+) -> tuple[GeneratedAnalysis, dict[str, Any]]:
+    import anthropic
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        messages: list[dict[str, Any]] = [
+            {"role": "user", "content": _build_input(markets, category)}
+        ]
+        options: dict[str, Any] = {
+            "model": os.getenv("ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL),
+            "max_tokens": 4096,
+            "system": SYSTEM_INSTRUCTIONS,
+            "messages": messages,
+            "tools": [
+                {
+                    "type": "web_search_20250305",
+                    "name": "web_search",
+                    "max_uses": 3,
+                }
+            ],
+            "output_format": GeneratedAnalysis,
+        }
+        response = client.messages.parse(**options)
+        if response.stop_reason == "pause_turn":
+            messages.append({"role": "assistant", "content": response.content})
+            response = client.messages.parse(**{**options, "messages": messages})
+        generated = response.parsed_output
+        if generated is None:
+            raise AIUnavailableError(
+                "The Claude response did not contain usable data."
+            )
+        return generated, response.to_dict()
+    except anthropic.RateLimitError as exc:
+        raise AIUnavailableError(
+            "The Anthropic rate limit was reached. Please try again later."
+        ) from exc
+    except (anthropic.APIConnectionError, anthropic.APIStatusError) as exc:
+        raise AIUnavailableError("Anthropic is currently unavailable.") from exc
+
+
 def analyze_markets(
     markets: list[Market],
     category: str,
     provider: str = "openai",
 ) -> AnalysisResult:
-    if provider not in {"openai", "grok"}:
+    if provider not in {"openai", "grok", "claude"}:
         raise AIUnavailableError("Unsupported research provider.")
     if not markets:
         return AnalysisResult(
@@ -154,58 +198,67 @@ def analyze_markets(
             overall_insights="Choose another category or try again later.",
         )
 
-    api_key = (
-        os.getenv("XAI_API_KEY")
-        if provider == "grok"
-        else os.getenv("OPENAI_API_KEY")
-    )
+    key_names = {
+        "openai": "OPENAI_API_KEY",
+        "grok": "XAI_API_KEY",
+        "claude": "ANTHROPIC_API_KEY",
+    }
+    api_key = os.getenv(key_names[provider])
     if not api_key:
         if os.getenv("DEMO_MODE", "true").casefold() == "true":
             return _demo_analysis(markets, category, provider)
-        key_name = "XAI_API_KEY" if provider == "grok" else "OPENAI_API_KEY"
-        raise AIUnavailableError(f"{key_name} is not configured.")
+        raise AIUnavailableError(f"{key_names[provider]} is not configured.")
 
-    try:
-        client = OpenAI(
-            api_key=api_key,
-            base_url=XAI_BASE_URL if provider == "grok" else None,
+    if provider == "claude":
+        generated, response_data = _analyze_with_claude(
+            markets, category, api_key
         )
-        request_options: dict[str, Any] = {
-            "model": (
-                os.getenv("XAI_MODEL", DEFAULT_XAI_MODEL)
-                if provider == "grok"
-                else os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
-            ),
-            "instructions": SYSTEM_INSTRUCTIONS,
-            "input": _build_input(markets, category),
-            "tools": [
-                {"type": "x_search"}
-                if provider == "grok"
-                else {"type": "web_search"}
-            ],
-            "text_format": GeneratedAnalysis,
-        }
-        if provider == "openai":
-            request_options["include"] = ["web_search_call.action.sources"]
-            request_options["reasoning"] = {
-                "effort": os.getenv("OPENAI_REASONING_EFFORT", "low")
-            }
-        else:
-            request_options["prompt_cache_key"] = "predict-with-fun-analysis"
-        response = client.responses.parse(**request_options)
-        generated = response.output_parsed
-        if generated is None:
-            raise AIUnavailableError(
-                "The AI response did not contain usable data."
+    else:
+        try:
+            client = OpenAI(
+                api_key=api_key,
+                base_url=XAI_BASE_URL if provider == "grok" else None,
             )
-    except RateLimitError as exc:
-        raise AIUnavailableError(
-            "The research provider rate limit was reached. Please try again later."
-        ) from exc
-    except (APIConnectionError, APIStatusError) as exc:
-        raise AIUnavailableError(
-            "The selected research provider is currently unavailable."
-        ) from exc
+            request_options: dict[str, Any] = {
+                "model": (
+                    os.getenv("XAI_MODEL", DEFAULT_XAI_MODEL)
+                    if provider == "grok"
+                    else os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
+                ),
+                "instructions": SYSTEM_INSTRUCTIONS,
+                "input": _build_input(markets, category),
+                "tools": [
+                    {"type": "x_search"}
+                    if provider == "grok"
+                    else {"type": "web_search"}
+                ],
+                "text_format": GeneratedAnalysis,
+            }
+            if provider == "openai":
+                request_options["include"] = [
+                    "web_search_call.action.sources"
+                ]
+                request_options["reasoning"] = {
+                    "effort": os.getenv("OPENAI_REASONING_EFFORT", "low")
+                }
+            else:
+                request_options["prompt_cache_key"] = "predict-with-fun-analysis"
+            response = client.responses.parse(**request_options)
+            generated = response.output_parsed
+            if generated is None:
+                raise AIUnavailableError(
+                    "The AI response did not contain usable data."
+                )
+            response_data = response.model_dump()
+        except RateLimitError as exc:
+            raise AIUnavailableError(
+                "The research provider rate limit was reached. "
+                "Please try again later."
+            ) from exc
+        except (APIConnectionError, APIStatusError) as exc:
+            raise AIUnavailableError(
+                "The selected research provider is currently unavailable."
+            ) from exc
 
     generated_by_title = {
         item.market_title.casefold(): item for item in generated.markets
@@ -242,6 +295,6 @@ def analyze_markets(
         summary=generated.summary,
         overall_insights=generated.overall_insights,
         markets=analyses,
-        sources=_extract_sources(response.model_dump()),
+        sources=_extract_sources(response_data),
         research_provider=provider,
     )

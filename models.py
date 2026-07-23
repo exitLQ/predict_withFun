@@ -55,7 +55,7 @@ class AnalysisResult(BaseModel):
     overall_insights: str | None = None
     sources: list[Source] = Field(default_factory=list)
     demo: bool = False
-    research_provider: Literal["openai", "grok"] = "openai"
+    research_provider: Literal["openai", "grok", "claude"] = "openai"
     disclaimer: str = (
         "AI-generated assessment for informational purposes only — "
         "not financial advice."
@@ -66,4 +66,5 @@ class HealthResponse(BaseModel):
     status: Literal["ok"]
     openai_configured: bool
     grok_configured: bool
+    claude_configured: bool
     demo_mode: bool

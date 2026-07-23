@@ -33,3 +33,19 @@ def test_grok_demo_reports_selected_provider(monkeypatch):
 
     assert result.demo is True
     assert result.research_provider == "grok"
+
+
+def test_claude_demo_reports_selected_provider(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("DEMO_MODE", "true")
+    market = Market(
+        slug="claude-demo",
+        title="Claude demo",
+        volume=500,
+        outcomes=[Outcome(title="Yes", price=0.4, probability=0.4)],
+    )
+
+    result = openai_analyzer.analyze_markets([market], "Demo", "claude")
+
+    assert result.demo is True
+    assert result.research_provider == "claude"

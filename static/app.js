@@ -64,6 +64,7 @@ async function checkHealth() {
     const ready = [
       health.openai_configured ? "OpenAI" : null,
       health.grok_configured ? "Grok" : null,
+      health.claude_configured ? "Claude" : null,
     ].filter(Boolean);
     $("apiStatus").textContent = ready.length
       ? `Live · ${ready.join(" + ")} ready`
@@ -400,17 +401,23 @@ function renderAnalysis(analysis) {
   if (analysis.demo) {
     const demo = document.createElement("div");
     demo.className = "demo-banner";
-    demo.textContent = analysis.research_provider === "grok"
-      ? "Demo mode · Configure XAI_API_KEY for live X research."
-      : "Demo mode · Configure OPENAI_API_KEY for live web research.";
+    const demoMessages = {
+      grok: "Demo mode · Configure XAI_API_KEY for live X research.",
+      claude: "Demo mode · Configure ANTHROPIC_API_KEY for live Claude web research.",
+      openai: "Demo mode · Configure OPENAI_API_KEY for live web research.",
+    };
+    demo.textContent = demoMessages[analysis.research_provider];
     container.append(demo);
   }
 
   const providerBadge = document.createElement("div");
   providerBadge.className = "provider-badge";
-  providerBadge.textContent = analysis.research_provider === "grok"
-    ? "Grok · X research"
-    : "OpenAI · Web research";
+  const providerLabels = {
+    grok: "Grok · X research",
+    claude: "Claude · Web research",
+    openai: "OpenAI · Web research",
+  };
+  providerBadge.textContent = providerLabels[analysis.research_provider];
   container.append(providerBadge);
 
   const summary = document.createElement("div");
