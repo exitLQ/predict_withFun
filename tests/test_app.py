@@ -18,10 +18,10 @@ def test_categories_endpoint(monkeypatch):
     monkeypatch.setattr(
         app,
         "fetch_categories",
-        lambda: [app.Category(id="1", name="Politik")],
+        lambda: [app.Category(id="1", name="Politics")],
     )
 
     response = client.get("/api/categories")
 
     assert response.status_code == 200
-    assert response.json()[0]["name"] == "Politik"
+    assert response.json()[0]["name"] == "Politics"

@@ -18,8 +18,8 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(
-    title="SignalDesk",
-    description="Polymarket-Daten übersichtlich erkunden und mit KI einordnen.",
+    title="predict_withFun",
+    description="Explore Polymarket data and put market signals into context with AI.",
     version="2.0.0",
 )
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -29,7 +29,7 @@ async def _category_or_404(category_id: str) -> Category:
     categories = await run_in_threadpool(fetch_categories)
     category = next((item for item in categories if item.id == category_id), None)
     if category is None:
-        raise HTTPException(status_code=404, detail="Kategorie nicht gefunden.")
+        raise HTTPException(status_code=404, detail="Category not found.")
     return category
 
 

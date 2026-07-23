@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Aktive Polymarket-Märkte entdecken und mit KI einordnen.">
+  <meta name="description" content="Explore active Polymarket markets and analyze them with AI.">
   <meta name="theme-color" content="#0b0d12">
-  <title>SignalDesk — Märkte besser lesen</title>
+  <title>predict_withFun — Read markets better</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -15,34 +15,34 @@
 <body>
   <div class="shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="SignalDesk Startseite">
+      <a class="brand" href="/" aria-label="predict_withFun home">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span>SignalDesk</span>
+        <span>predict_withFun</span>
       </a>
-      <div class="status"><span class="status-dot"></span><span id="apiStatus">System wird geprüft</span></div>
+      <div class="status"><span class="status-dot"></span><span id="apiStatus">Checking system</span></div>
     </header>
 
     <main>
       <section class="hero">
         <p class="eyebrow">Polymarket Intelligence</p>
-        <h1>Vom Marktpreis<br>zur <em>Einordnung.</em></h1>
-        <p class="hero-copy">Entdecke die volumenstärksten Prognosemärkte und vergleiche Marktstimmung mit einer strukturierten KI-Analyse.</p>
+        <h1>From market price<br>to <em>perspective.</em></h1>
+        <p class="hero-copy">Discover the highest-volume prediction markets and compare market sentiment with structured AI analysis.</p>
       </section>
 
       <section class="control-panel" aria-labelledby="explorerTitle">
         <div>
-          <p class="step">01 / Markt auswählen</p>
-          <h2 id="explorerTitle">Welche Signale interessieren dich?</h2>
+          <p class="step">01 / Choose a market</p>
+          <h2 id="explorerTitle">Which signals interest you?</h2>
         </div>
         <div class="controls">
           <label class="field">
-            <span>Kategorie</span>
+            <span>Category</span>
             <select id="categorySelect" disabled>
-              <option value="">Kategorien werden geladen …</option>
+              <option value="">Loading categories …</option>
             </select>
           </label>
           <label class="field field-small">
-            <span>Anzahl</span>
+            <span>Count</span>
             <select id="limitSelect">
               <option value="5">Top 5</option>
               <option value="10" selected>Top 10</option>
@@ -51,7 +51,7 @@
             </select>
           </label>
           <button class="button button-primary" id="loadMarketsBtn" disabled>
-            Märkte anzeigen <span aria-hidden="true">↗</span>
+            Show markets <span aria-hidden="true">↗</span>
           </button>
         </div>
       </section>
@@ -61,32 +61,32 @@
       <section id="marketsSection" class="results-section" hidden>
         <div class="section-heading">
           <div>
-            <p class="step">02 / Marktübersicht</p>
-            <h2 id="marketsHeading">Aktive Märkte</h2>
+            <p class="step">02 / Market overview</p>
+            <h2 id="marketsHeading">Active markets</h2>
           </div>
           <button class="button button-accent" id="analyzeBtn">
-            Mit KI analysieren <span aria-hidden="true">✦</span>
+            Analyze with AI <span aria-hidden="true">✦</span>
           </button>
         </div>
-        <div id="marketStats" class="stats" aria-label="Marktstatistiken"></div>
+        <div id="marketStats" class="stats" aria-label="Market statistics"></div>
         <div id="marketsGrid" class="market-grid"></div>
       </section>
 
       <section id="analysisSection" class="analysis-section" hidden>
         <div class="section-heading">
           <div>
-            <p class="step">03 / KI-Einordnung</p>
-            <h2>Analyse</h2>
+            <p class="step">03 / AI perspective</p>
+            <h2>Analysis</h2>
           </div>
-          <span class="ai-label">OpenAI · strukturierte Ausgabe</span>
+          <span class="ai-label">OpenAI · structured output</span>
         </div>
         <div id="analysisContent"></div>
       </section>
     </main>
 
     <footer>
-      <span>SignalDesk</span>
-      <span>Marktdaten von Polymarket · Keine Finanzberatung</span>
+      <span>predict_withFun</span>
+      <span>Market data by Polymarket · Not financial advice</span>
     </footer>
   </div>
 </body>

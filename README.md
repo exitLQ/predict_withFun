@@ -1,30 +1,30 @@
-# SignalDesk
+# predict_withFun
 
-SignalDesk zeigt die volumenstärksten aktiven Polymarket-Märkte einer Kategorie
-und ordnet ihre Wahrscheinlichkeiten mit OpenAI strukturiert ein.
+predict_withFun displays the highest-volume active Polymarket markets in a
+category and uses OpenAI to provide structured context for their probabilities.
 
-> Die KI-Ausgaben dienen ausschließlich Informationszwecken und sind keine
-> Finanzberatung.
+> AI-generated results are for informational purposes only and are not
+> financial advice.
 
-## Funktionen
+## Features
 
-- Aktuelle Kategorien und Märkte aus der Polymarket Gamma API
-- Top 5, 10, 15 oder 25 Märkte nach Handelsvolumen
-- Volumen, Liquidität und implizite Wahrscheinlichkeiten
-- Strukturierte KI-Analyse über die OpenAI Responses API
-- Responsives, barrierearmes Frontend ohne Build-Schritt
-- API-Fehlerbehandlung, Healthcheck und fünfminütiger Daten-Cache
-- Tests, Linting, GitHub Actions und Docker-Deployment
+- Current categories and markets from the Polymarket Gamma API
+- Top 5, 10, 15, or 25 markets by trading volume
+- Volume, liquidity, and implied probabilities
+- Structured AI analysis through the OpenAI Responses API
+- Responsive, accessible frontend with no build step
+- API error handling, health check, and a five-minute data cache
+- Tests, linting, GitHub Actions, and Docker deployment
 
-## Lokal starten
+## Run locally
 
-Voraussetzungen: Python 3.11 oder neuer und ein OpenAI API-Schlüssel.
+Requirements: Python 3.11 or newer and an OpenAI API key.
 
 ```bash
 python -m venv .venv
 ```
 
-Aktiviere die virtuelle Umgebung:
+Activate the virtual environment:
 
 ```bash
 # macOS / Linux
@@ -34,42 +34,41 @@ source .venv/bin/activate
 .\.venv\Scripts\Activate.ps1
 ```
 
-Installiere die Pakete und lege deine lokale Konfiguration an:
+Install the packages and create your local configuration:
 
 ```bash
 pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Unter Windows kannst du `.env.example` manuell als `.env` kopieren. Trage dort
-deinen Schlüssel als `OPENAI_API_KEY` ein. Die `.env`-Datei wird nicht
-versioniert.
+On Windows, you can manually copy `.env.example` to `.env`. Add your key as
+`OPENAI_API_KEY`. The `.env` file is excluded from version control.
 
 ```bash
 uvicorn app:app --reload
 ```
 
-Danach ist die Anwendung unter <http://localhost:8000> erreichbar. Die
-interaktive API-Dokumentation liegt unter <http://localhost:8000/docs>.
+Open <http://localhost:8000>. Interactive API documentation is available at
+<http://localhost:8000/docs>.
 
-## Konfiguration
+## Configuration
 
-| Variable | Standard | Beschreibung |
+| Variable | Default | Description |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | – | Erforderlich für KI-Analysen |
-| `OPENAI_MODEL` | `gpt-5.6-sol` | Verwendetes OpenAI-Modell |
-| `HOST` | `0.0.0.0` | Server-Adresse |
-| `PORT` | `8000` | Server-Port |
-| `ENVIRONMENT` | `development` | Laufzeitumgebung |
+| `OPENAI_API_KEY` | — | Required for AI analysis |
+| `OPENAI_MODEL` | `gpt-5.6-sol` | OpenAI model used for analysis |
+| `HOST` | `0.0.0.0` | Server address |
+| `PORT` | `8000` | Server port |
+| `ENVIRONMENT` | `development` | Runtime environment |
 
 ## API
 
-| Methode | Route | Zweck |
+| Method | Route | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/health` | Status und OpenAI-Konfiguration |
-| `GET` | `/api/categories` | Verfügbare Kategorien |
-| `GET` | `/api/markets/{id}?limit=10` | Top-Märkte einer Kategorie |
-| `POST` | `/api/analyze?category_id={id}&limit=10` | KI-Analyse |
+| `GET` | `/api/health` | Service and OpenAI configuration status |
+| `GET` | `/api/categories` | Available categories |
+| `GET` | `/api/markets/{id}?limit=10` | Top markets in a category |
+| `POST` | `/api/analyze?category_id={id}&limit=10` | AI analysis |
 
 ## Tests
 
@@ -84,36 +83,36 @@ pytest
 ### Docker
 
 ```bash
-docker build -t signaldesk .
-docker run --rm -p 8000:8000 -e OPENAI_API_KEY=sk-... signaldesk
+docker build -t predict-with-fun .
+docker run --rm -p 8000:8000 -e OPENAI_API_KEY=sk-... predict-with-fun
 ```
 
 ### Render
 
-Das Repository enthält eine `render.yaml`. Verbinde das Repository in Render
-als Blueprint und hinterlege `OPENAI_API_KEY` als Secret. Render baut dann das
-Docker-Image und überwacht `/api/health`.
+The repository includes a `render.yaml` file. Connect the repository in Render
+as a Blueprint and store `OPENAI_API_KEY` as a secret. Render will build the
+Docker image and monitor `/api/health`.
 
-## Architektur
+## Architecture
 
 ```text
 .
-├── app.py                  # FastAPI-Routen und statische Auslieferung
-├── models.py               # Validierte API-Datenmodelle
-├── polymarket_client.py    # Polymarket-Zugriff, Parsing und Cache
-├── openai_analyzer.py      # Responses API und strukturierte Ausgabe
-├── static/                 # HTML, CSS und JavaScript
-├── tests/                  # Automatisierte Tests
-├── Dockerfile              # Produktions-Container
-└── .github/workflows/      # CI für Tests und Linting
+├── app.py                  # FastAPI routes and static file delivery
+├── models.py               # Validated API data models
+├── polymarket_client.py    # Polymarket client, parsing, and cache
+├── openai_analyzer.py      # Responses API and structured output
+├── static/                 # HTML, CSS, and JavaScript
+├── tests/                  # Automated tests
+├── Dockerfile              # Production container
+└── .github/workflows/      # CI for tests and linting
 ```
 
-## Sicherheit
+## Security
 
-- API-Schlüssel bleiben ausschließlich im Backend.
-- `.env` ist in `.gitignore` ausgeschlossen.
-- Externe Texte werden im Browser als Text gerendert, nicht als ungeprüftes HTML.
-- Der Container läuft als Benutzer ohne Root-Rechte.
+- API keys remain on the backend.
+- `.env` is excluded through `.gitignore`.
+- External text is rendered as text rather than untrusted HTML.
+- The container runs as a non-root user.
 
 <!-- hypertribe:sponsors:start -->
 ## Sponsors

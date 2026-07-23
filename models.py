@@ -32,7 +32,7 @@ class MarketAnalysis(BaseModel):
     market_title: str
     fair_probability: float | None = Field(default=None, ge=0, le=1)
     market_probability: float = Field(ge=0, le=1)
-    assessment: Literal["unterbewertet", "fair", "überbewertet"]
+    assessment: Literal["undervalued", "fair", "overvalued"]
     risks: list[str] = Field(default_factory=list)
     reasoning: str
 
@@ -43,7 +43,8 @@ class AnalysisResult(BaseModel):
     markets: list[MarketAnalysis] = Field(default_factory=list)
     overall_insights: str | None = None
     disclaimer: str = (
-        "KI-generierte Einschätzung zu Informationszwecken – keine Finanzberatung."
+        "AI-generated assessment for informational purposes only — "
+        "not financial advice."
     )
 
 

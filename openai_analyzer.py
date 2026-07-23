@@ -10,11 +10,11 @@ load_dotenv()
 
 DEFAULT_MODEL = "gpt-5.6-sol"
 SYSTEM_INSTRUCTIONS = """
-Du analysierst Prognosemärkte nüchtern und transparent. Trenne beobachtete
-Marktpreise von deiner Schätzung. Behaupte keine Kenntnis zukünftiger Ereignisse.
-Berücksichtige Basisraten, Aktualität, Liquidität, Auflösungsregeln und bekannte
-Informationslücken. Verwende ausschließlich die gelieferten Marktdaten und
-formuliere auf Deutsch. Die Ausgabe ist keine Finanzberatung.
+Analyze prediction markets objectively and transparently. Separate observed
+market prices from your own estimate. Never claim knowledge of future events.
+Consider base rates, recency, liquidity, resolution rules, and known information
+gaps. Use only the supplied market data and respond in English. The output is
+not financial advice.
 """.strip()
 
 
@@ -38,8 +38,8 @@ class GeneratedAnalysis(BaseModel):
 
 def _build_input(markets: list[Market], category: str) -> str:
     lines = [
-        f'Analysiere die folgenden Märkte der Kategorie "{category}".',
-        "Bewerte jeweils die Wahrscheinlichkeit des ersten Outcomes.",
+        f'Analyze the following markets in the "{category}" category.',
+        "For each market, assess the probability of the first outcome.",
         "",
     ]
     for index, market in enumerate(markets, 1):
@@ -51,11 +51,11 @@ def _build_input(markets: list[Market], category: str) -> str:
             [
                 f"{index}. {market.title}",
                 (
-                    f"Volumen: ${market.volume:,.0f}; "
-                    f"Liquidität: ${market.liquidity or 0:,.0f}"
+                    f"Volume: ${market.volume:,.0f}; "
+                    f"Liquidity: ${market.liquidity or 0:,.0f}"
                 ),
                 f"Outcomes: {outcomes}",
-                f"Beschreibung: {market.description or 'nicht angegeben'}",
+                f"Description: {market.description or 'not provided'}",
                 "",
             ]
         )
@@ -64,10 +64,10 @@ def _build_input(markets: list[Market], category: str) -> str:
 
 def _normalize_assessment(value: str) -> str:
     normalized = value.casefold()
-    if "unter" in normalized or "under" in normalized:
-        return "unterbewertet"
-    if "über" in normalized or "over" in normalized:
-        return "überbewertet"
+    if "under" in normalized:
+        return "undervalued"
+    if "over" in normalized:
+        return "overvalued"
     return "fair"
 
 
@@ -75,15 +75,15 @@ def analyze_markets(markets: list[Market], category: str) -> AnalysisResult:
     if not markets:
         return AnalysisResult(
             category=category,
-            summary="Keine aktiven Märkte in dieser Kategorie gefunden.",
+            summary="No active markets were found in this category.",
             overall_insights=(
-                "Wähle eine andere Kategorie oder versuche es später erneut."
+                "Choose another category or try again later."
             ),
         )
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise AIUnavailableError("OPENAI_API_KEY ist nicht konfiguriert.")
+        raise AIUnavailableError("OPENAI_API_KEY is not configured.")
 
     try:
         response = OpenAI(api_key=api_key).responses.parse(
@@ -95,14 +95,14 @@ def analyze_markets(markets: list[Market], category: str) -> AnalysisResult:
         generated = response.output_parsed
         if generated is None:
             raise AIUnavailableError(
-                "Die KI-Antwort enthielt keine auswertbaren Daten."
+                "The AI response did not contain usable data."
             )
     except RateLimitError as exc:
         raise AIUnavailableError(
-            "Das OpenAI-Limit wurde erreicht. Bitte versuche es später erneut."
+            "The OpenAI rate limit was reached. Please try again later."
         ) from exc
     except (APIConnectionError, APIStatusError) as exc:
-        raise AIUnavailableError("OpenAI ist momentan nicht erreichbar.") from exc
+        raise AIUnavailableError("OpenAI is currently unavailable.") from exc
 
     generated_by_title = {
         item.market_title.casefold(): item for item in generated.markets
@@ -118,7 +118,7 @@ def analyze_markets(markets: list[Market], category: str) -> AnalysisResult:
                     market_title=market.title,
                     market_probability=market_probability,
                     assessment="fair",
-                    reasoning="Für diesen Markt wurde keine Einzelanalyse erzeugt.",
+                    reasoning="No individual analysis was generated for this market.",
                 )
             )
             continue

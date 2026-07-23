@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: signaldesk
+    name: predict-with-fun
     runtime: docker
     plan: free
     healthCheckPath: /api/health

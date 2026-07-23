@@ -40,7 +40,7 @@ def _get(path: str, params: dict[str, Any]) -> Any:
         response.raise_for_status()
         data = response.json()
     except (requests.RequestException, ValueError) as exc:
-        raise PolymarketError("Polymarket ist momentan nicht erreichbar.") from exc
+        raise PolymarketError("Polymarket is currently unavailable.") from exc
 
     _cache[cache_key] = (time.monotonic(), data)
     return data
@@ -68,12 +68,12 @@ def _as_float(value: Any, default: float = 0.0) -> float:
 def fetch_categories() -> list[Category]:
     data = _get("/tags", {"limit": 100})
     if not isinstance(data, list):
-        raise PolymarketError("Polymarket lieferte ein unerwartetes Datenformat.")
+        raise PolymarketError("Polymarket returned an unexpected data format.")
 
     categories = [
         Category(
             id=str(tag["id"]),
-            name=str(tag.get("label") or tag.get("name") or "Unbenannt"),
+            name=str(tag.get("label") or tag.get("name") or "Untitled"),
             description=tag.get("description"),
         )
         for tag in data
@@ -93,7 +93,7 @@ def fetch_markets_by_category(tag_id: str) -> list[dict[str, Any]]:
         },
     )
     if not isinstance(data, list):
-        raise PolymarketError("Polymarket lieferte ein unerwartetes Datenformat.")
+        raise PolymarketError("Polymarket returned an unexpected data format.")
     return data
 
 

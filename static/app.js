@@ -31,19 +31,19 @@ async function checkHealth() {
   try {
     const health = await api("/health");
     $("apiStatus").textContent = health.openai_configured
-      ? "Live · KI bereit"
-      : "Live · KI-Schlüssel fehlt";
+      ? "Live · AI ready"
+      : "Live · AI key missing";
   } catch (_) {
-    $("apiStatus").textContent = "Verbindung nicht verfügbar";
+    $("apiStatus").textContent = "Connection unavailable";
     document.querySelector(".status-dot").classList.add("offline");
   }
 }
 
 async function loadCategories() {
-  setBusy(true, "Kategorien werden geladen …");
+  setBusy(true, "Loading categories …");
   try {
     const categories = await api("/categories");
-    categorySelect.innerHTML = '<option value="">Kategorie auswählen</option>';
+    categorySelect.innerHTML = '<option value="">Choose a category</option>';
     categories.forEach(({ id, name }) => {
       const option = document.createElement("option");
       option.value = id;
@@ -51,7 +51,7 @@ async function loadCategories() {
       categorySelect.appendChild(option);
     });
     categorySelect.disabled = false;
-    showNotice(`${categories.length} Kategorien verfügbar.`, "success", 2400);
+    showNotice(`${categories.length} categories available.`, "success", 2400);
   } catch (error) {
     showNotice(error.message, "error");
   } finally {
@@ -70,7 +70,7 @@ function handleCategoryChange() {
 
 async function loadMarkets() {
   if (!state.categoryId) return;
-  setBusy(true, "Marktdaten werden ausgewertet …", loadButton);
+  setBusy(true, "Processing market data …", loadButton);
   $("analysisSection").hidden = true;
   try {
     state.markets = await api(
@@ -79,8 +79,8 @@ async function loadMarkets() {
     renderMarkets();
     showNotice(
       state.markets.length
-        ? `${state.markets.length} aktive Märkte geladen.`
-        : "In dieser Kategorie wurden keine aktiven Märkte gefunden.",
+        ? `${state.markets.length} active markets loaded.`
+        : "No active markets were found in this category.",
       state.markets.length ? "success" : "neutral",
       2600,
     );
@@ -96,9 +96,9 @@ function renderMarkets() {
   const totalVolume = state.markets.reduce((sum, market) => sum + market.volume, 0);
   const totalLiquidity = state.markets.reduce((sum, market) => sum + (market.liquidity || 0), 0);
   $("marketStats").innerHTML = `
-    <div><span>Märkte</span><strong>${state.markets.length}</strong></div>
-    <div><span>Volumen</span><strong>${formatMoney(totalVolume)}</strong></div>
-    <div><span>Liquidität</span><strong>${formatMoney(totalLiquidity)}</strong></div>
+    <div><span>Markets</span><strong>${state.markets.length}</strong></div>
+    <div><span>Volume</span><strong>${formatMoney(totalVolume)}</strong></div>
+    <div><span>Liquidity</span><strong>${formatMoney(totalLiquidity)}</strong></div>
   `;
   $("marketsGrid").replaceChildren(...state.markets.map(marketCard));
   analyzeButton.disabled = state.markets.length === 0;
@@ -125,7 +125,7 @@ function marketCard(market, index) {
       <strong>${probability == null ? "—" : formatPercent(probability)}</strong>
       <div class="probability-track"><i style="width:${(probability || 0) * 100}%"></i></div>
     </div>
-    ${market.url ? '<a class="card-link" target="_blank" rel="noopener noreferrer" aria-label="Markt bei Polymarket öffnen">↗</a>' : ""}
+    ${market.url ? '<a class="card-link" target="_blank" rel="noopener noreferrer" aria-label="Open market on Polymarket">↗</a>' : ""}
   `;
   article.querySelector("h3").textContent = market.title;
   article.querySelector(".probability span").textContent = outcomeName;
@@ -136,7 +136,7 @@ function marketCard(market, index) {
 
 async function analyzeMarkets() {
   if (!state.categoryId || state.markets.length === 0) return;
-  setBusy(true, "KI-Analyse läuft – das kann einen Moment dauern …", analyzeButton);
+  setBusy(true, "AI analysis in progress — this may take a moment …", analyzeButton);
   try {
     const limit = Math.min(Number(limitSelect.value), 10);
     const analysis = await api(
@@ -157,7 +157,7 @@ function renderAnalysis(analysis) {
 
   const summary = document.createElement("div");
   summary.className = "analysis-summary";
-  summary.innerHTML = "<span>Zusammenfassung</span><p></p>";
+  summary.innerHTML = "<span>Summary</span><p></p>";
   summary.querySelector("p").textContent = analysis.summary;
   container.append(summary);
 
@@ -193,9 +193,9 @@ function analysisCard(item) {
       <h3></h3>
     </div>
     <div class="comparison">
-      <div><span>Markt</span><strong>${formatPercent(item.market_probability)}</strong></div>
-      <div><span>KI-Schätzung</span><strong>${item.fair_probability == null ? "—" : formatPercent(item.fair_probability)}</strong></div>
-      <div><span>Differenz</span><strong class="${delta == null ? "" : delta >= 0 ? "positive" : "negative"}">${delta == null ? "—" : `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(1)} pp`}</strong></div>
+      <div><span>Market</span><strong>${formatPercent(item.market_probability)}</strong></div>
+      <div><span>AI estimate</span><strong>${item.fair_probability == null ? "—" : formatPercent(item.fair_probability)}</strong></div>
+      <div><span>Difference</span><strong class="${delta == null ? "" : delta >= 0 ? "positive" : "negative"}">${delta == null ? "—" : `${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(1)} pp`}</strong></div>
     </div>
     <p class="reasoning"></p>
     <div class="risks"></div>
@@ -233,19 +233,19 @@ function showNotice(message, type = "neutral", timeout = 0) {
 }
 
 function assessmentClass(value) {
-  if (value.includes("unter")) return "under";
-  if (value.includes("über")) return "over";
+  if (value.includes("under")) return "under";
+  if (value.includes("over")) return "over";
   return "fair";
 }
 
 function formatMoney(value) {
-  return new Intl.NumberFormat("de-DE", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1,
   }).format(value);
 }
 
 function formatPercent(value) {
-  return new Intl.NumberFormat("de-DE", {
+  return new Intl.NumberFormat("en-US", {
     style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1,
   }).format(value);
 }

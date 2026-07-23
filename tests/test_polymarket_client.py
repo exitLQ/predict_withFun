@@ -5,19 +5,19 @@ def test_market_parses_string_encoded_outcomes():
     market = polymarket_client._market_from_api(
         {
             "slug": "will-it-rain",
-            "question": "Wird es regnen?",
-            "outcomes": '["Ja", "Nein"]',
+            "question": "Will it rain?",
+            "outcomes": '["Yes", "No"]',
             "outcomePrices": '["0.62", "0.38"]',
             "volume": "1200.5",
             "liquidity": "300",
             "active": True,
         },
-        "Wetter",
+        "Weather",
         "rain-event",
     )
 
     assert market is not None
-    assert market.outcomes[0].title == "Ja"
+    assert market.outcomes[0].title == "Yes"
     assert market.outcomes[0].probability == 0.62
     assert market.url == "https://polymarket.com/event/rain-event"
 
