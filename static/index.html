@@ -129,6 +129,43 @@
         <div id="analysisContent"></div>
       </section>
 
+      <section class="comparison-section" aria-labelledby="savedHeading">
+        <div class="section-heading">
+          <div>
+            <p class="step">Archive / Stored research</p>
+            <h2 id="savedHeading">Analysis history</h2>
+          </div>
+          <button class="text-button" id="refreshAnalyses">Refresh history</button>
+        </div>
+        <div class="history-filters">
+          <label class="tool-field" for="analysisSearch">
+            <span>Search category</span>
+            <input id="analysisSearch" type="search" placeholder="e.g. Politics">
+          </label>
+          <label class="tool-field" for="analysisProvider">
+            <span>Provider</span>
+            <select id="analysisProvider">
+              <option value="all">All providers</option>
+              <option value="openai">OpenAI</option>
+              <option value="grok">Grok</option>
+              <option value="claude">Claude</option>
+            </select>
+          </label>
+          <label class="tool-field" for="analysisLimit">
+            <span>Records</span>
+            <select id="analysisLimit">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+        </div>
+        <div id="savedAnalyses" class="saved-analysis-list">
+          <div class="empty-state">Loading saved analyses …</div>
+        </div>
+      </section>
+
       <section class="comparison-section" aria-labelledby="accuracyHeading">
         <div class="section-heading">
           <div>

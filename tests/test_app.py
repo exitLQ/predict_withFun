@@ -75,6 +75,34 @@ def test_admin_endpoint_is_disabled_without_token_in_production(monkeypatch):
     assert response.status_code == 503
 
 
+def test_analysis_history_endpoints(monkeypatch):
+    item = app.AnalysisHistoryItem(
+        id="saved-id",
+        created_at="2026-07-23T10:00:00Z",
+        category="Politics",
+        provider="openai",
+        requested_provider="openai",
+        market_count=2,
+        estimated_cost_usd=0.01,
+    )
+    result = app.AnalysisResult(category="Politics", summary="Restored")
+    monkeypatch.setattr(app, "list_analyses", lambda limit: [item])
+    monkeypatch.setattr(
+        app,
+        "get_analysis",
+        lambda record_id: result if record_id == "saved-id" else None,
+    )
+
+    history = client.get("/api/analyses?limit=10")
+    restored = client.get("/api/analyses/saved-id")
+    missing = client.get("/api/analyses/missing")
+
+    assert history.status_code == 200
+    assert history.json()[0]["category"] == "Politics"
+    assert restored.json()["summary"] == "Restored"
+    assert missing.status_code == 404
+
+
 def test_compare_endpoint_returns_all_demo_providers(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)

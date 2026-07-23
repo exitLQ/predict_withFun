@@ -211,6 +211,19 @@ Click **History** on a market card to request up to 60 points of one-month
 history for the first outcome. Markets without a usable token ID return an
 empty history.
 
+### Reopen a saved analysis
+
+The **Analysis history** section loads the newest stored live analyses. Search
+by category, filter by OpenAI, Grok, or Claude, and choose whether to load 10,
+25, 50, or 100 records. Select **Open result** to restore the complete original
+summary, probabilities, reasoning, risks, sources, usage, and provider
+metadata in the normal analysis panel. The list refreshes automatically after
+a new analysis and can also be refreshed manually.
+
+Demo output and cache hits are not stored, so they do not appear in this list.
+Filters run in the browser over the selected record limit; they do not make
+additional provider calls or incur AI cost.
+
 ### Watchlist and comparison
 
 - **Watch** saves a market slug in the current browser's `localStorage`.
@@ -490,6 +503,10 @@ to a SQLite file so the application remains easy to run. The database stores:
 The schema and index are created automatically on first use. History can be
 listed with `GET /api/analyses` and an original result can be retrieved with
 `GET /api/analyses/{record_id}`.
+
+The web interface exposes the same history through a responsive archive with
+category search, provider filtering, selectable record limits, localized
+timestamps, cost and market-count metadata, and a full saved-result view.
 
 ## Database migrations
 

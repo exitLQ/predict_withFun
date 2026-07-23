@@ -16,6 +16,7 @@ const state = {
   busy: false,
   watchlist: new Set(loadWatchlist()),
   comparison: new Set(),
+  savedAnalyses: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -43,11 +44,17 @@ $("clearComparison").addEventListener("click", () => {
   applyMarketFilters();
 });
 $("syncAccuracy").addEventListener("click", syncAccuracy);
+$("refreshAnalyses").addEventListener("click", loadSavedAnalyses);
+$("analysisSearch").addEventListener("input", renderSavedAnalyses);
+$("analysisProvider").addEventListener("change", renderSavedAnalyses);
+$("analysisLimit").addEventListener("change", loadSavedAnalyses);
 $("loadAdmin").addEventListener("click", loadAdminDashboard);
 $("adminToken").value = sessionStorage.getItem("predict_withFun.adminToken") || "";
 
 async function initialize() {
-  await Promise.allSettled([checkHealth(), loadCategories(), loadAccuracy()]);
+  await Promise.allSettled([
+    checkHealth(), loadCategories(), loadAccuracy(), loadSavedAnalyses(),
+  ]);
 }
 
 async function api(path, options = {}) {
@@ -57,7 +64,7 @@ async function api(path, options = {}) {
   });
   let body = {};
   try { body = await response.json(); } catch (_) { /* empty response */ }
-  if (!response.ok) throw new Error(body.detail || "Die Anfrage ist fehlgeschlagen.");
+  if (!response.ok) throw new Error(body.detail || "The request failed.");
   return body;
 }
 
@@ -117,6 +124,76 @@ async function loadAccuracy() {
     }));
   } catch (_) {
     // Accuracy is optional while the database is being initialized.
+  }
+}
+
+async function loadSavedAnalyses() {
+  const button = $("refreshAnalyses");
+  button.disabled = true;
+  button.textContent = "Loading …";
+  try {
+    state.savedAnalyses = await api(`/analyses?limit=${$("analysisLimit").value}`);
+    renderSavedAnalyses();
+  } catch (error) {
+    state.savedAnalyses = [];
+    $("savedAnalyses").innerHTML = '<div class="empty-state"></div>';
+    $("savedAnalyses").querySelector(".empty-state").textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Refresh history";
+  }
+}
+
+function renderSavedAnalyses() {
+  const query = $("analysisSearch").value.trim().toLowerCase();
+  const provider = $("analysisProvider").value;
+  const records = state.savedAnalyses.filter((item) => (
+    (!query || item.category.toLowerCase().includes(query))
+    && (provider === "all" || item.provider === provider)
+  ));
+  const container = $("savedAnalyses");
+  if (!records.length) {
+    container.innerHTML = '<div class="empty-state">No matching saved analyses.</div>';
+    return;
+  }
+  container.replaceChildren(...records.map((item) => {
+    const article = document.createElement("article");
+    article.className = "saved-analysis-row";
+    const providerName = { openai: "OpenAI", grok: "Grok", claude: "Claude" }[item.provider];
+    const created = new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium", timeStyle: "short",
+    }).format(new Date(item.created_at));
+    article.innerHTML = `
+      <div class="saved-analysis-main">
+        <span class="comparison-label"></span>
+        <h3></h3>
+        <p></p>
+      </div>
+      <div class="saved-analysis-facts">
+        <span><strong>${item.market_count}</strong> markets</span>
+        <span><strong>$${item.estimated_cost_usd.toFixed(4)}</strong> estimated</span>
+      </div>
+      <button class="text-button">Open result</button>`;
+    article.querySelector(".comparison-label").textContent = providerName;
+    article.querySelector("h3").textContent = item.category;
+    article.querySelector("p").textContent = created;
+    article.querySelector("button").addEventListener("click", () => openSavedAnalysis(item));
+    return article;
+  }));
+}
+
+async function openSavedAnalysis(item) {
+  try {
+    const analysis = await api(`/analyses/${encodeURIComponent(item.id)}`);
+    renderAnalysis(analysis);
+    const restored = document.createElement("div");
+    restored.className = "saved-result-banner";
+    restored.textContent = `Saved analysis · ${new Date(item.created_at).toLocaleString()}`;
+    $("analysisContent").prepend(restored);
+    $("analysisSection").hidden = false;
+    $("analysisSection").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (error) {
+    showNotice(error.message, "error");
   }
 }
 
@@ -438,6 +515,7 @@ async function analyzeSingleMarket(market, article) {
       { method: "POST" },
     );
     renderAnalysis(analysis);
+    await loadSavedAnalyses();
   } catch (error) {
     showNotice(error.message, "error");
   } finally {
@@ -525,6 +603,7 @@ async function analyzeMarkets() {
     }
     if (isComparison) renderComparisonAnalysis(analysis);
     else renderAnalysis(analysis);
+    await loadSavedAnalyses();
   } catch (error) {
     showNotice(error.message, "error");
   } finally {
