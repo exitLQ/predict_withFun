@@ -29,7 +29,7 @@ test("supports skip navigation and account keyboard controls", async ({ page }) 
   await page.keyboard.press("Enter");
   await expect(page.locator("#mainContent")).toBeFocused();
 
-  const account = page.getByRole("button", { name: "Account" });
+  const account = page.locator("#toggleAccount");
   await account.focus();
   await page.keyboard.press("Enter");
   await expect(account).toHaveAttribute("aria-expanded", "true");
