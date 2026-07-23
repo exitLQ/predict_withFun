@@ -1,78 +1,78 @@
 # Polymarket Analysis Tool
 
-Ein Web-Tool zur Analyse von Polymarket-Märkten mit KI-Unterstützung durch OpenAI.
+A web tool for analyzing Polymarket markets with AI support powered by OpenAI.
 
 ## Features
 
-- Abruf aller aktuellen Märkte von Polymarket
-- Anzeige der Top 10 Märkte pro Kategorie (sortiert nach Volumen)
-- KI-gestützte Analyse der Marktwahrscheinlichkeiten mit OpenAI GPT-4
-- Moderne Web-UI zur interaktiven Nutzung
+- Fetch all current markets from Polymarket
+- Display the top 10 markets per category (sorted by volume)
+- AI-powered analysis of market probabilities with OpenAI GPT-4
+- Modern web UI for interactive use
 
 ## Installation
 
-1. Python 3.8+ installieren
+1. Install Python 3.8+
 
-2. Dependencies installieren:
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. OpenAI API Key konfigurieren:
+3. Configure your OpenAI API key:
 ```bash
 export OPENAI_API_KEY=your_api_key_here
 ```
 
-Oder erstelle eine `.env` Datei:
+Or create a `.env` file:
 ```
 OPENAI_API_KEY=your_api_key_here
 ```
 
-## Verwendung
+## Usage
 
-1. Server starten:
+1. Start the server:
 ```bash
 python app.py
 ```
 
-Oder mit uvicorn direkt:
+Or directly with uvicorn:
 ```bash
 uvicorn app:app --reload
 ```
 
-2. Browser öffnen:
+2. Open your browser:
 ```
 http://localhost:8000
 ```
 
-3. Im Browser:
-   - Kategorie auswählen
-   - "Märkte laden" klicken, um die Top 10 Märkte zu sehen
-   - "Analyse starten" klicken, um eine KI-Analyse durchzuführen
+3. In the browser:
+   - Select a category
+   - Click "Load Markets" to see the top 10 markets
+   - Click "Start Analysis" to run an AI analysis
 
-## API Endpunkte
+## API Endpoints
 
-- `GET /api/categories` - Liste aller Kategorien
-- `GET /api/markets/{category_id}` - Top 10 Märkte einer Kategorie
-- `POST /api/analyze?category_id={id}` - KI-Analyse der Märkte einer Kategorie
+- `GET /api/categories` - List of all categories
+- `GET /api/markets/{category_id}` - Top 10 markets of a category
+- `POST /api/analyze?category_id={id}` - AI analysis of a category's markets
 
-## Projektstruktur
+## Project Structure
 
 ```
 prediction_tool/
-├── app.py                 # FastAPI Backend
-├── polymarket_client.py   # Polymarket API Client
-├── openai_analyzer.py     # OpenAI Analyse-Logik
-├── models.py              # Datenmodelle
+├── app.py                 # FastAPI backend
+├── polymarket_client.py   # Polymarket API client
+├── openai_analyzer.py     # OpenAI analysis logic
+├── models.py              # Data models
 ├── static/                # Frontend
 │   ├── index.html
 │   ├── style.css
 │   └── app.js
-├── requirements.txt       # Python Dependencies
+├── requirements.txt       # Python dependencies
 └── README.md
 ```
 
-## Technologie-Stack
+## Technology Stack
 
 - **Backend**: FastAPI (Python)
 - **Frontend**: HTML, CSS, JavaScript
