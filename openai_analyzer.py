@@ -1,4 +1,7 @@
 import os
+import time
+from copy import deepcopy
+from hashlib import sha256
 from typing import Any
 from urllib.parse import urlparse
 
@@ -6,7 +9,7 @@ from dotenv import load_dotenv
 from openai import APIConnectionError, APIStatusError, OpenAI, RateLimitError
 from pydantic import BaseModel, Field
 
-from models import AnalysisResult, Market, MarketAnalysis, Source
+from models import AnalysisResult, Market, MarketAnalysis, Source, UsageInfo
 
 load_dotenv()
 
@@ -22,6 +25,8 @@ reporting. Never claim knowledge of future events. Consider base rates, recency,
 liquidity, resolution rules, and information gaps. Respond in English. The
 output is not financial advice.
 """.strip()
+PROVIDERS = ("openai", "grok", "claude")
+_analysis_cache: dict[str, tuple[float, AnalysisResult]] = {}
 
 
 class AIUnavailableError(RuntimeError):
@@ -106,6 +111,103 @@ def _extract_sources(value: Any) -> list[Source]:
     return list(found.values())[:12]
 
 
+def _usage_value(data: dict[str, Any], *paths: str) -> int:
+    for path in paths:
+        value: Any = data
+        for part in path.split("."):
+            value = value.get(part) if isinstance(value, dict) else None
+        if isinstance(value, int):
+            return value
+    return 0
+
+
+def _usage_info(provider: str, data: dict[str, Any]) -> UsageInfo:
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    input_tokens = _usage_value(
+        {"usage": usage}, "usage.input_tokens", "usage.prompt_tokens"
+    )
+    output_tokens = _usage_value(
+        {"usage": usage}, "usage.output_tokens", "usage.completion_tokens"
+    )
+    search_calls = _usage_value(
+        {"usage": usage},
+        "usage.server_tool_use.web_search_requests",
+        "usage.server_tool_use.x_search_requests",
+    )
+    if search_calls == 0:
+        tool_types = {"web_search_call", "x_search_call", "web_search"}
+
+        def count_tools(value: Any) -> int:
+            if isinstance(value, dict):
+                count = int(value.get("type") in tool_types)
+                return count + sum(count_tools(item) for item in value.values())
+            if isinstance(value, list):
+                return sum(count_tools(item) for item in value)
+            return 0
+
+        search_calls = count_tools(data)
+    prices = {
+        "openai": (
+            float(os.getenv("OPENAI_INPUT_USD_PER_MTOK", "5")),
+            float(os.getenv("OPENAI_OUTPUT_USD_PER_MTOK", "30")),
+            float(os.getenv("OPENAI_SEARCH_USD_PER_1K", "10")),
+        ),
+        "grok": (
+            float(os.getenv("XAI_INPUT_USD_PER_MTOK", "2")),
+            float(os.getenv("XAI_OUTPUT_USD_PER_MTOK", "6")),
+            float(os.getenv("XAI_SEARCH_USD_PER_1K", "5")),
+        ),
+        "claude": (
+            float(os.getenv("ANTHROPIC_INPUT_USD_PER_MTOK", "2")),
+            float(os.getenv("ANTHROPIC_OUTPUT_USD_PER_MTOK", "10")),
+            float(os.getenv("ANTHROPIC_SEARCH_USD_PER_1K", "10")),
+        ),
+    }
+    input_rate, output_rate, search_rate = prices[provider]
+    estimated_cost = (
+        input_tokens * input_rate / 1_000_000
+        + output_tokens * output_rate / 1_000_000
+        + search_calls * search_rate / 1_000
+    )
+    return UsageInfo(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        search_calls=search_calls,
+        estimated_cost_usd=round(estimated_cost, 6),
+    )
+
+
+def _cache_key(markets: list[Market], category: str, provider: str) -> str:
+    payload = "|".join(
+        [
+            provider,
+            category,
+            *[
+                (
+                    f"{market.slug}:"
+                    f"{market.outcomes[0].probability if market.outcomes else 0.5}"
+                )
+                for market in markets
+            ],
+        ]
+    )
+    return sha256(payload.encode()).hexdigest()
+
+
+def _cached_result(key: str) -> AnalysisResult | None:
+    cached = _analysis_cache.get(key)
+    if not cached:
+        return None
+    created_at, result = cached
+    if time.monotonic() - created_at > int(os.getenv("ANALYSIS_CACHE_TTL", "1800")):
+        _analysis_cache.pop(key, None)
+        return None
+    result = deepcopy(result)
+    result.cached = True
+    result.usage.estimated_cost_usd = 0
+    return result
+
+
 def _demo_analysis(
     markets: list[Market], category: str, provider: str
 ) -> AnalysisResult:
@@ -184,12 +286,12 @@ def _analyze_with_claude(
         raise AIUnavailableError("Anthropic is currently unavailable.") from exc
 
 
-def analyze_markets(
+def _analyze_provider(
     markets: list[Market],
     category: str,
     provider: str = "openai",
 ) -> AnalysisResult:
-    if provider not in {"openai", "grok", "claude"}:
+    if provider not in PROVIDERS:
         raise AIUnavailableError("Unsupported research provider.")
     if not markets:
         return AnalysisResult(
@@ -297,4 +399,48 @@ def analyze_markets(
         markets=analyses,
         sources=_extract_sources(response_data),
         research_provider=provider,
+        requested_provider=provider,
+        usage=_usage_info(provider, response_data),
     )
+
+
+def analyze_markets(
+    markets: list[Market],
+    category: str,
+    provider: str = "openai",
+    allow_fallback: bool = True,
+) -> AnalysisResult:
+    if provider not in PROVIDERS:
+        raise AIUnavailableError("Unsupported research provider.")
+    candidates = [provider]
+    if allow_fallback and os.getenv("PROVIDER_FALLBACK", "true").casefold() == "true":
+        candidates.extend(item for item in PROVIDERS if item != provider)
+    last_error: AIUnavailableError | None = None
+    provider_keys = {
+        "openai": "OPENAI_API_KEY",
+        "grok": "XAI_API_KEY",
+        "claude": "ANTHROPIC_API_KEY",
+    }
+    has_configured_candidate = any(
+        os.getenv(provider_keys[item]) for item in candidates
+    )
+    for candidate in candidates:
+        if has_configured_candidate and not os.getenv(provider_keys[candidate]):
+            continue
+        key = _cache_key(markets, category, candidate)
+        cached = _cached_result(key)
+        if cached:
+            cached.requested_provider = provider
+            cached.fallback_used = candidate != provider
+            return cached
+        try:
+            result = _analyze_provider(markets, category, candidate)
+            result.requested_provider = provider
+            result.fallback_used = candidate != provider
+            _analysis_cache[key] = (time.monotonic(), deepcopy(result))
+            return result
+        except AIUnavailableError as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    raise AIUnavailableError("No configured research provider is available.")

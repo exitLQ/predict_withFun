@@ -198,6 +198,12 @@ blockquote { margin: 12px 0 30px; padding: 24px 28px; background: var(--lime); c
 .disclaimer { color: var(--muted); font-size: 11px; margin-top: 22px; }
 .demo-banner { margin-bottom: 12px; padding: 13px 16px; border-radius: 10px; color: var(--lime); background: rgba(200,244,93,.08); border: 1px solid rgba(200,244,93,.25); font: 11px "DM Mono", monospace; }
 .provider-badge { width: fit-content; margin-bottom: 12px; padding: 7px 10px; border-radius: 100px; color: var(--blue); background: rgba(137,167,255,.08); border: 1px solid rgba(137,167,255,.25); font: 10px "DM Mono", monospace; text-transform: uppercase; }
+.usage-strip { color: var(--muted); font: 11px "DM Mono", monospace; margin: 0 0 18px; }
+.provider-comparison { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.provider-result { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(255,255,255,.02); }
+.provider-result .analysis-summary { grid-template-columns: 1fr; padding: 18px; }
+.provider-result .analysis-summary p { font-size: 15px; }
+.provider-result .analysis-grid { grid-template-columns: 1fr; }
 .sources { margin-top: 24px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius); display: grid; gap: 10px; }
 .sources h3 { margin: 0 0 8px; font-size: 16px; }
 .sources a { color: var(--muted); text-decoration: none; font-size: 13px; overflow-wrap: anywhere; }
@@ -218,6 +224,7 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
   .card-actions { grid-column: 2 / -1; justify-content: flex-start; }
   .analysis-grid { grid-template-columns: 1fr; }
   .comparison-market-grid { grid-template-columns: 1fr; }
+  .provider-comparison { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
   .shell { width: min(100% - 24px, 1240px); }

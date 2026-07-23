@@ -1,5 +1,6 @@
 import os
 import time
+from asyncio import gather
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -8,7 +9,14 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from models import AnalysisResult, Category, HealthResponse, Market, PricePoint
+from models import (
+    AnalysisResult,
+    Category,
+    HealthResponse,
+    Market,
+    PricePoint,
+    ProviderComparison,
+)
 from openai_analyzer import AIUnavailableError, analyze_markets
 from polymarket_client import (
     PolymarketError,
@@ -117,6 +125,59 @@ async def analyze_category_markets(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except AIUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/compare", response_model=ProviderComparison)
+async def compare_category_markets(
+    request: Request,
+    category_id: str = Query(..., min_length=1),
+    limit: int = Query(default=10, ge=1, le=10),
+) -> ProviderComparison:
+    _enforce_analysis_limit(request)
+    try:
+        category = await _category_or_404(category_id)
+        markets = await run_in_threadpool(
+            get_top_markets_for_category, category_id, category.name, limit
+        )
+    except PolymarketError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    providers = [
+        provider
+        for provider, key in (
+            ("openai", "OPENAI_API_KEY"),
+            ("grok", "XAI_API_KEY"),
+            ("claude", "ANTHROPIC_API_KEY"),
+        )
+        if os.getenv(key)
+    ]
+    if not providers and os.getenv("DEMO_MODE", "true").casefold() == "true":
+        providers = ["openai", "grok", "claude"]
+    if not providers:
+        raise HTTPException(status_code=503, detail="No AI provider is configured.")
+
+    async def run_provider(provider: str) -> tuple[str, AnalysisResult | Exception]:
+        try:
+            result = await run_in_threadpool(
+                analyze_markets, markets, category.name, provider, False
+            )
+            return provider, result
+        except AIUnavailableError as exc:
+            return provider, exc
+
+    outcomes = await gather(*(run_provider(provider) for provider in providers))
+    return ProviderComparison(
+        results=[
+            result
+            for _, result in outcomes
+            if isinstance(result, AnalysisResult)
+        ],
+        errors={
+            provider: str(result)
+            for provider, result in outcomes
+            if isinstance(result, Exception)
+        },
+    )
 
 
 @app.post(

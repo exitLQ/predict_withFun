@@ -48,6 +48,13 @@ class PricePoint(BaseModel):
     price: float = Field(ge=0, le=1)
 
 
+class UsageInfo(BaseModel):
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    search_calls: int = Field(default=0, ge=0)
+    estimated_cost_usd: float = Field(default=0, ge=0)
+
+
 class AnalysisResult(BaseModel):
     category: str
     summary: str
@@ -56,10 +63,19 @@ class AnalysisResult(BaseModel):
     sources: list[Source] = Field(default_factory=list)
     demo: bool = False
     research_provider: Literal["openai", "grok", "claude"] = "openai"
+    requested_provider: Literal["openai", "grok", "claude"] = "openai"
+    fallback_used: bool = False
+    cached: bool = False
+    usage: UsageInfo = Field(default_factory=UsageInfo)
     disclaimer: str = (
         "AI-generated assessment for informational purposes only — "
         "not financial advice."
     )
+
+
+class ProviderComparison(BaseModel):
+    results: list[AnalysisResult] = Field(default_factory=list)
+    errors: dict[str, str] = Field(default_factory=dict)
 
 
 class HealthResponse(BaseModel):

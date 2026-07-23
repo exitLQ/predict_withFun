@@ -33,3 +33,31 @@ def test_categories_endpoint(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()[0]["name"] == "Politics"
+
+
+def test_compare_endpoint_returns_all_demo_providers(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("DEMO_MODE", "true")
+    monkeypatch.setattr(
+        app,
+        "fetch_categories",
+        lambda: [app.Category(id="1", name="Politics")],
+    )
+    monkeypatch.setattr(
+        app,
+        "get_top_markets_for_category",
+        lambda *args: [
+            app.Market(slug="demo", title="Demo", volume=100, outcomes=[])
+        ],
+    )
+
+    response = client.post("/api/compare?category_id=1&limit=1")
+
+    assert response.status_code == 200
+    assert {item["research_provider"] for item in response.json()["results"]} == {
+        "openai",
+        "grok",
+        "claude",
+    }

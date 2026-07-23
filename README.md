@@ -15,6 +15,10 @@ probabilities.
 - Structured AI analysis through the OpenAI Responses API
 - Live web research with source links for current evidence
 - Selectable OpenAI web research, Grok real-time X research, or Claude web research
+- Side-by-side analysis from every configured provider
+- Automatic provider fallback when the selected service is unavailable
+- Thirty-minute analysis cache to reduce latency and repeated API spend
+- Token, search-call, and estimated USD cost details on every result
 - One-click analysis and one-month price history for individual markets
 - Instant title search plus volume, liquidity, and probability sorting
 - Device-local watchlist stored in the browser
@@ -73,6 +77,8 @@ Open <http://localhost:8000>. Interactive API documentation is available at
 | `XAI_MODEL` | `grok-4.5` | Grok model used for X research |
 | `ANTHROPIC_API_KEY` | — | Required for Claude web research |
 | `ANTHROPIC_MODEL` | `claude-sonnet-5` | Claude model used for analysis |
+| `ANALYSIS_CACHE_TTL` | `1800` | Seconds before an analysis cache entry expires |
+| `PROVIDER_FALLBACK` | `true` | Try another configured provider after a failure |
 | `DEMO_MODE` | `true` | Return a market-price demo when no API key is set |
 | `ANALYSIS_REQUESTS_PER_HOUR` | `5` | Analysis limit per client IP |
 | `HOST` | `0.0.0.0` | Server address |
@@ -87,6 +93,7 @@ Open <http://localhost:8000>. Interactive API documentation is available at
 | `GET` | `/api/categories` | Available categories |
 | `GET` | `/api/markets/{id}?limit=10` | Top markets in a category |
 | `POST` | `/api/analyze?category_id={id}&provider=claude` | AI analysis (`openai`, `grok`, or `claude`) |
+| `POST` | `/api/compare?category_id={id}` | Compare all configured providers |
 | `POST` | `/api/analyze/{category_id}/{market_slug}?provider=claude` | Single-market analysis |
 | `GET` | `/api/history/{category_id}/{market_slug}` | Market price history |
 
@@ -119,6 +126,16 @@ The application uses Claude through the Anthropic API with server-side web
 search and structured output. Claude Code is Anthropic's development agent;
 the deployed application itself connects directly to a Claude model through
 `ANTHROPIC_API_KEY`.
+
+## Cost estimates
+
+Each live result reports input tokens, output tokens, search calls, and an
+estimated USD cost. The defaults reflect the documented standard prices for
+the configured default models as of July 2026. They can be updated without a
+code change through the `*_INPUT_USD_PER_MTOK`, `*_OUTPUT_USD_PER_MTOK`, and
+`*_SEARCH_USD_PER_1K` environment variables. Estimates may differ from the
+provider invoice because of caching, long-context rates, regional processing,
+or unreported tool usage.
 
 ## Architecture
 

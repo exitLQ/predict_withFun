@@ -17,3 +17,7 @@ services:
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-5
+      - key: ANALYSIS_CACHE_TTL
+        value: 1800
+      - key: PROVIDER_FALLBACK
+        value: true

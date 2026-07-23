@@ -304,6 +304,10 @@ async function analyzeSingleMarket(market, article) {
   button.disabled = true;
   button.textContent = "Analyzing …";
   try {
+    if (providerSelect.value === "compare") {
+      showNotice("Provider comparison is available for category analysis.", "neutral", 3000);
+      return;
+    }
     const analysis = await api(
       `/analyze/${encodeURIComponent(state.categoryId)}/${encodeURIComponent(market.slug)}?provider=${providerSelect.value}`,
       { method: "POST" },
@@ -382,11 +386,15 @@ async function analyzeMarkets() {
   setBusy(true, "AI analysis in progress — this may take a moment …", analyzeButton);
   try {
     const limit = Math.min(Number(limitSelect.value), 10);
+    const isComparison = providerSelect.value === "compare";
     const analysis = await api(
-      `/analyze?category_id=${encodeURIComponent(state.categoryId)}&limit=${limit}&provider=${providerSelect.value}`,
+      isComparison
+        ? `/compare?category_id=${encodeURIComponent(state.categoryId)}&limit=${limit}`
+        : `/analyze?category_id=${encodeURIComponent(state.categoryId)}&limit=${limit}&provider=${providerSelect.value}`,
       { method: "POST" },
     );
-    renderAnalysis(analysis);
+    if (isComparison) renderComparisonAnalysis(analysis);
+    else renderAnalysis(analysis);
   } catch (error) {
     showNotice(error.message, "error");
   } finally {
@@ -394,9 +402,30 @@ async function analyzeMarkets() {
   }
 }
 
-function renderAnalysis(analysis) {
+function renderComparisonAnalysis(comparison) {
   const container = $("analysisContent");
   container.replaceChildren();
+  const grid = document.createElement("div");
+  grid.className = "provider-comparison";
+  comparison.results.forEach((analysis) => {
+    const column = document.createElement("section");
+    column.className = "provider-result";
+    renderAnalysis(analysis, column, false);
+    grid.append(column);
+  });
+  container.append(grid);
+  Object.entries(comparison.errors || {}).forEach(([provider, message]) => {
+    const error = document.createElement("div");
+    error.className = "demo-banner";
+    error.textContent = `${provider}: ${message}`;
+    container.append(error);
+  });
+  $("analysisSection").hidden = false;
+  $("analysisSection").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderAnalysis(analysis, container = $("analysisContent"), reset = true) {
+  if (reset) container.replaceChildren();
 
   if (analysis.demo) {
     const demo = document.createElement("div");
@@ -419,6 +448,16 @@ function renderAnalysis(analysis) {
   };
   providerBadge.textContent = providerLabels[analysis.research_provider];
   container.append(providerBadge);
+
+  const usage = document.createElement("div");
+  usage.className = "usage-strip";
+  const fallback = analysis.fallback_used
+    ? ` · fallback from ${analysis.requested_provider}`
+    : "";
+  usage.textContent = analysis.cached
+    ? `Cached result · $0.000000 new API cost${fallback}`
+    : `${analysis.usage.input_tokens.toLocaleString()} input · ${analysis.usage.output_tokens.toLocaleString()} output · ${analysis.usage.search_calls} searches · est. $${analysis.usage.estimated_cost_usd.toFixed(6)}${fallback}`;
+  container.append(usage);
 
   const summary = document.createElement("div");
   summary.className = "analysis-summary";
@@ -459,8 +498,10 @@ function renderAnalysis(analysis) {
   disclaimer.textContent = analysis.disclaimer;
   container.append(disclaimer);
 
-  $("analysisSection").hidden = false;
-  $("analysisSection").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (reset) {
+    $("analysisSection").hidden = false;
+    $("analysisSection").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function analysisCard(item) {
