@@ -1,12 +1,14 @@
 import json
 import os
 import sqlite3
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterator
 
+from migrate import upgrade_database
 from models import (
     AccuracySummary,
     AnalysisHistoryItem,
@@ -15,6 +17,8 @@ from models import (
 )
 
 DEFAULT_DATABASE_URL = "sqlite:///./predict_withfun.db"
+_initialized_urls: set[str] = set()
+_migration_lock = threading.Lock()
 
 
 def _database_url() -> str:
@@ -51,54 +55,14 @@ def _placeholder() -> str:
 
 
 def initialize_database() -> None:
-    id_type = "TEXT"
-    timestamp_type = "TIMESTAMPTZ" if _is_postgres() else "TEXT"
-    with _connection() as connection:
-        connection.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS analysis_history (
-                id {id_type} PRIMARY KEY,
-                created_at {timestamp_type} NOT NULL,
-                category TEXT NOT NULL,
-                provider TEXT NOT NULL,
-                requested_provider TEXT NOT NULL,
-                market_count INTEGER NOT NULL,
-                estimated_cost_usd DOUBLE PRECISION NOT NULL,
-                result_json TEXT NOT NULL,
-                resolved_outcome DOUBLE PRECISION,
-                brier_score DOUBLE PRECISION
-            )
-            """
-        )
-        connection.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS forecast_scores (
-                id {id_type} PRIMARY KEY,
-                analysis_id {id_type} NOT NULL,
-                provider TEXT NOT NULL,
-                created_at {timestamp_type} NOT NULL,
-                market_slug TEXT NOT NULL,
-                market_title TEXT NOT NULL,
-                predicted_probability DOUBLE PRECISION NOT NULL,
-                market_probability DOUBLE PRECISION NOT NULL,
-                outcome DOUBLE PRECISION,
-                brier_score DOUBLE PRECISION,
-                FOREIGN KEY (analysis_id) REFERENCES analysis_history(id)
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS forecast_scores_market_slug_idx
-            ON forecast_scores (market_slug)
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS analysis_history_created_at_idx
-            ON analysis_history (created_at DESC)
-            """
-        )
+    database_url = _database_url()
+    if database_url in _initialized_urls:
+        return
+    with _migration_lock:
+        if database_url in _initialized_urls:
+            return
+        upgrade_database()
+        _initialized_urls.add(database_url)
 
 
 def save_analysis(result: AnalysisResult) -> str | None:

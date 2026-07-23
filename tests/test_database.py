@@ -1,3 +1,5 @@
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import database
@@ -5,7 +7,7 @@ from models import AnalysisResult, MarketAnalysis
 
 
 def test_analysis_history_round_trip(monkeypatch):
-    database_path = "test-history-round-trip.db"
+    database_path = "test-history-round-trip-v3.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
     result = AnalysisResult(
         category="Politics",
@@ -40,6 +42,18 @@ def test_analysis_history_round_trip(monkeypatch):
         summary = database.accuracy_summaries()[0]
         assert summary.mean_brier_score == 0.25
         assert summary.mean_market_brier_score == 0.36
+        with closing(sqlite3.connect(database_path)) as connection:
+            revision = connection.execute(
+                "SELECT version_num FROM alembic_version"
+            ).fetchone()
+            indexes = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA index_list('forecast_scores')"
+                )
+            }
+        assert revision == ("0001",)
+        assert "forecast_scores_market_slug_idx" in indexes
     finally:
         Path(database_path).unlink(missing_ok=True)
 

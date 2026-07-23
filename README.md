@@ -27,6 +27,7 @@ estimates side by side.
 - [Caching, fallback, and rate limits](#caching-fallback-and-rate-limits)
 - [Redis and background jobs](#redis-and-background-jobs)
 - [Persistent analysis history](#persistent-analysis-history)
+- [Database migrations](#database-migrations)
 - [Accuracy tracking](#accuracy-tracking)
 - [Provider synthesis](#provider-synthesis)
 - [Source quality assessment](#source-quality-assessment)
@@ -282,6 +283,7 @@ Git and must never be committed.
 ### 5. Start the application
 
 ```bash
+python migrate.py
 uvicorn app:app --reload
 ```
 
@@ -464,6 +466,45 @@ to a SQLite file so the application remains easy to run. The database stores:
 The schema and index are created automatically on first use. History can be
 listed with `GET /api/analyses` and an original result can be retrieved with
 `GET /api/analyses/{record_id}`.
+
+## Database migrations
+
+Database schema changes are versioned with Alembic. The migration history lives
+in `migrations/versions/`; revision `0001` defines the analysis-history and
+forecast-scoring tables plus their indexes.
+
+Apply all pending migrations:
+
+```bash
+python migrate.py
+```
+
+Equivalent Alembic command:
+
+```bash
+alembic upgrade head
+```
+
+Inspect the current database revision:
+
+```bash
+alembic current
+```
+
+Create a migration after changing the schema:
+
+```bash
+alembic revision -m "Describe the schema change"
+```
+
+Every migration must provide both `upgrade()` and `downgrade()`, remain
+compatible with PostgreSQL and SQLite, and be reviewed before deployment. The
+initial migration safely detects tables created by older predict_withFun
+versions, adds missing indexes, and then establishes Alembic's revision marker.
+
+Database access lazily applies pending migrations once per configured database
+URL as a safety net. The Docker entrypoint explicitly runs migrations before
+starting Uvicorn, which remains the recommended production sequence.
 
 ## Accuracy tracking
 
@@ -1049,6 +1090,8 @@ are shared. Also consider:
 ├── job_queue.py             # Local and RQ background-job adapter
 ├── job_tasks.py             # Importable background task functions
 ├── models.py                # Pydantic request and response models
+├── migrate.py               # Programmatic Alembic upgrade command
+├── migrations/              # Versioned database schema changes
 ├── openai_analyzer.py       # All AI providers, cache, fallback, and costs
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
 ├── source_quality.py        # Source normalization and quality rules
@@ -1082,6 +1125,13 @@ are shared. Also consider:
 - uses PostgreSQL in production and SQLite locally;
 - stores validated result JSON and searchable metadata;
 - lists saved analyses and restores complete results.
+
+`migrate.py` and `migrations/`:
+
+- configure Alembic from `DATABASE_URL`;
+- upgrade SQLite and PostgreSQL through the same revision chain;
+- baseline databases created by older application versions;
+- provide reversible, reviewable schema evolution.
 
 `infrastructure.py`:
 
@@ -1260,7 +1310,7 @@ python -m pytest -vv
 - RQ mode requires a separately operated worker.
 - There is no authentication or user-specific server-side storage.
 - Watchlists exist only in the current browser.
-- Database migrations are currently additive and initialized by application code.
+- Migrations must be applied before running standalone RQ workers against a new database.
 - Provider comparison can increase API spend.
 - Category analysis is capped at ten markets.
 - Single-market lookup loads up to 100 category markets before matching a slug.
