@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -76,6 +77,18 @@ class AnalysisResult(BaseModel):
 class ProviderComparison(BaseModel):
     results: list[AnalysisResult] = Field(default_factory=list)
     errors: dict[str, str] = Field(default_factory=dict)
+
+
+class AnalysisHistoryItem(BaseModel):
+    id: str
+    created_at: datetime
+    category: str
+    provider: Literal["openai", "grok", "claude"]
+    requested_provider: Literal["openai", "grok", "claude"]
+    market_count: int = Field(ge=0)
+    estimated_cost_usd: float = Field(ge=0)
+    resolved_outcome: float | None = Field(default=None, ge=0, le=1)
+    brier_score: float | None = Field(default=None, ge=0, le=1)
 
 
 class HealthResponse(BaseModel):

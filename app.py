@@ -9,7 +9,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from database import get_analysis, list_analyses, save_analysis
 from models import (
+    AnalysisHistoryItem,
     AnalysisResult,
     Category,
     HealthResponse,
@@ -118,9 +120,11 @@ async def analyze_category_markets(
         markets = await run_in_threadpool(
             get_top_markets_for_category, category_id, category.name, limit
         )
-        return await run_in_threadpool(
+        result = await run_in_threadpool(
             analyze_markets, markets, category.name, provider
         )
+        await run_in_threadpool(save_analysis, result)
+        return result
     except PolymarketError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except AIUnavailableError as exc:
@@ -166,12 +170,14 @@ async def compare_category_markets(
             return provider, exc
 
     outcomes = await gather(*(run_provider(provider) for provider in providers))
+    successful = [
+        result for _, result in outcomes if isinstance(result, AnalysisResult)
+    ]
+    await gather(
+        *(run_in_threadpool(save_analysis, result) for result in successful)
+    )
     return ProviderComparison(
-        results=[
-            result
-            for _, result in outcomes
-            if isinstance(result, AnalysisResult)
-        ],
+        results=successful,
         errors={
             provider: str(result)
             for provider, result in outcomes
@@ -199,13 +205,30 @@ async def analyze_single_market(
         market = next((item for item in markets if item.slug == market_slug), None)
         if market is None:
             raise HTTPException(status_code=404, detail="Market not found.")
-        return await run_in_threadpool(
+        result = await run_in_threadpool(
             analyze_markets, [market], category.name, provider
         )
+        await run_in_threadpool(save_analysis, result)
+        return result
     except PolymarketError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except AIUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/analyses", response_model=list[AnalysisHistoryItem])
+async def get_analysis_history(
+    limit: int = Query(default=25, ge=1, le=100),
+) -> list[AnalysisHistoryItem]:
+    return await run_in_threadpool(list_analyses, limit)
+
+
+@app.get("/api/analyses/{record_id}", response_model=AnalysisResult)
+async def get_saved_analysis(record_id: str) -> AnalysisResult:
+    result = await run_in_threadpool(get_analysis, record_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Analysis not found.")
+    return result
 
 
 @app.get(

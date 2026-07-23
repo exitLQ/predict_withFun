@@ -10,3 +10,6 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+*.db
+*.db-shm
+*.db-wal

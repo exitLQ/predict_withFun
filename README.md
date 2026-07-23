@@ -25,6 +25,7 @@ estimates side by side.
 - [Local installation](#local-installation)
 - [Configuration](#configuration)
 - [Caching, fallback, and rate limits](#caching-fallback-and-rate-limits)
+- [Persistent analysis history](#persistent-analysis-history)
 - [Cost estimates](#cost-estimates)
 - [API reference](#api-reference)
 - [Data models](#data-models)
@@ -65,6 +66,7 @@ estimates side by side.
 - Calculates an estimated USD cost for each new analysis
 - Applies a configurable per-client analysis limit
 - Caches Polymarket data for five minutes
+- Stores completed live analyses in PostgreSQL or local SQLite
 
 ### Browser tools
 
@@ -310,6 +312,7 @@ application.
 | `ENVIRONMENT` | `development` | Enables reload only when running `python app.py` in development |
 | `HOST` | `0.0.0.0` | Bind address when running `python app.py` |
 | `PORT` | `8000` | HTTP port |
+| `DATABASE_URL` | `sqlite:///./predict_withfun.db` | PostgreSQL or SQLite connection URL |
 
 Boolean values are enabled only when their value is `true`, ignoring letter
 case.
@@ -390,6 +393,25 @@ The default limit is five requests per hour.
 
 The limiter is process-local. For a multi-instance public deployment, replace
 it with a shared store such as Redis if strict global enforcement is required.
+
+## Persistent analysis history
+
+Every new, non-demo, non-cached analysis is stored after it completes.
+Comparison requests store each successful provider result separately. Cache
+hits are not duplicated.
+
+Production uses PostgreSQL through `DATABASE_URL`; local development defaults
+to a SQLite file so the application remains easy to run. The database stores:
+
+- creation time and unique record ID;
+- category and provider metadata;
+- complete validated analysis JSON;
+- market count and estimated request cost;
+- optional resolution and accuracy fields used by later scoring.
+
+The schema and index are created automatically on first use. History can be
+listed with `GET /api/analyses` and an original result can be retrieved with
+`GET /api/analyses/{record_id}`.
 
 ## Cost estimates
 
@@ -601,6 +623,26 @@ Response:
 ]
 ```
 
+### `GET /api/analyses`
+
+Lists saved analysis metadata in reverse chronological order.
+
+| Parameter | Default | Validation |
+| --- | --- | --- |
+| `limit` | `25` | Integer from 1 to 100 |
+
+```bash
+curl "http://localhost:8000/api/analyses?limit=25"
+```
+
+### `GET /api/analyses/{record_id}`
+
+Returns the complete saved `AnalysisResult` for one history record.
+
+```bash
+curl "http://localhost:8000/api/analyses/RECORD_ID"
+```
+
 ### Status codes
 
 | Status | Meaning |
@@ -772,6 +814,7 @@ scaling, use a shared cache and limiter. Also consider:
 ├── .github/
 │   └── workflows/           # GitHub Actions CI
 ├── app.py                   # FastAPI routes, limits, and static delivery
+├── database.py              # PostgreSQL/SQLite analysis persistence
 ├── models.py                # Pydantic request and response models
 ├── openai_analyzer.py       # All AI providers, cache, fallback, and costs
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
@@ -797,6 +840,13 @@ scaling, use a shared cache and limiter. Also consider:
 - loads Polymarket data outside the async event loop;
 - runs provider comparisons concurrently;
 - maps domain errors to HTTP responses.
+
+`database.py`:
+
+- creates the portable analysis-history schema;
+- uses PostgreSQL in production and SQLite locally;
+- stores validated result JSON and searchable metadata;
+- lists saved analyses and restores complete results.
 
 `polymarket_client.py`:
 
@@ -933,7 +983,7 @@ python -m pytest -vv
 - Cache and rate-limit state are not shared across processes.
 - There is no authentication or user-specific server-side storage.
 - Watchlists exist only in the current browser.
-- Analysis history is not persisted.
+- Database migrations are currently additive and initialized by application code.
 - Provider comparison can increase API spend.
 - Category analysis is capped at ten markets.
 - Single-market lookup loads up to 100 category markets before matching a slug.

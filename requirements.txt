@@ -5,3 +5,4 @@ openai==2.47.0
 anthropic==0.118.0
 python-dotenv==1.2.2
 pydantic==2.13.4
+psycopg[binary]==3.3.2
