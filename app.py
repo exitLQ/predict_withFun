@@ -62,8 +62,9 @@ async def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
         openai_configured=bool(os.getenv("OPENAI_API_KEY")),
+        grok_configured=bool(os.getenv("XAI_API_KEY")),
         demo_mode=(
-            not bool(os.getenv("OPENAI_API_KEY"))
+            not bool(os.getenv("OPENAI_API_KEY") or os.getenv("XAI_API_KEY"))
             and os.getenv("DEMO_MODE", "true").casefold() == "true"
         ),
     )
@@ -96,6 +97,7 @@ async def analyze_category_markets(
     request: Request,
     category_id: str = Query(..., min_length=1),
     limit: int = Query(default=10, ge=1, le=10),
+    provider: str = Query(default="openai", pattern="^(openai|grok)$"),
 ) -> AnalysisResult:
     _enforce_analysis_limit(request)
     try:
@@ -103,7 +105,9 @@ async def analyze_category_markets(
         markets = await run_in_threadpool(
             get_top_markets_for_category, category_id, category.name, limit
         )
-        return await run_in_threadpool(analyze_markets, markets, category.name)
+        return await run_in_threadpool(
+            analyze_markets, markets, category.name, provider
+        )
     except PolymarketError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except AIUnavailableError as exc:
@@ -118,6 +122,7 @@ async def analyze_single_market(
     request: Request,
     category_id: str,
     market_slug: str,
+    provider: str = Query(default="openai", pattern="^(openai|grok)$"),
 ) -> AnalysisResult:
     _enforce_analysis_limit(request)
     try:
@@ -128,7 +133,9 @@ async def analyze_single_market(
         market = next((item for item in markets if item.slug == market_slug), None)
         if market is None:
             raise HTTPException(status_code=404, detail="Market not found.")
-        return await run_in_threadpool(analyze_markets, [market], category.name)
+        return await run_in_threadpool(
+            analyze_markets, [market], category.name, provider
+        )
     except PolymarketError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except AIUnavailableError as exc:

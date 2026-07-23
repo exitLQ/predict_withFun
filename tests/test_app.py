@@ -7,6 +7,7 @@ client = TestClient(app.app)
 
 def test_health_endpoint(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
 
     response = client.get("/api/health")
 
@@ -14,6 +15,7 @@ def test_health_endpoint(monkeypatch):
     assert response.json() == {
         "status": "ok",
         "openai_configured": False,
+        "grok_configured": False,
         "demo_mode": True,
     }
 

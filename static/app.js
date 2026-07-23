@@ -23,6 +23,7 @@ const categorySelect = $("categorySelect");
 const limitSelect = $("limitSelect");
 const loadButton = $("loadMarketsBtn");
 const analyzeButton = $("analyzeBtn");
+const providerSelect = $("providerSelect");
 const marketSearch = $("marketSearch");
 const marketSort = $("marketSort");
 const marketView = $("marketView");
@@ -60,8 +61,12 @@ async function api(path, options = {}) {
 async function checkHealth() {
   try {
     const health = await api("/health");
-    $("apiStatus").textContent = health.openai_configured
-      ? "Live · AI ready"
+    const ready = [
+      health.openai_configured ? "OpenAI" : null,
+      health.grok_configured ? "Grok" : null,
+    ].filter(Boolean);
+    $("apiStatus").textContent = ready.length
+      ? `Live · ${ready.join(" + ")} ready`
       : health.demo_mode ? "Live · Demo mode" : "Live · AI key missing";
   } catch (_) {
     $("apiStatus").textContent = "Connection unavailable";
@@ -299,7 +304,7 @@ async function analyzeSingleMarket(market, article) {
   button.textContent = "Analyzing …";
   try {
     const analysis = await api(
-      `/analyze/${encodeURIComponent(state.categoryId)}/${encodeURIComponent(market.slug)}`,
+      `/analyze/${encodeURIComponent(state.categoryId)}/${encodeURIComponent(market.slug)}?provider=${providerSelect.value}`,
       { method: "POST" },
     );
     renderAnalysis(analysis);
@@ -377,7 +382,7 @@ async function analyzeMarkets() {
   try {
     const limit = Math.min(Number(limitSelect.value), 10);
     const analysis = await api(
-      `/analyze?category_id=${encodeURIComponent(state.categoryId)}&limit=${limit}`,
+      `/analyze?category_id=${encodeURIComponent(state.categoryId)}&limit=${limit}&provider=${providerSelect.value}`,
       { method: "POST" },
     );
     renderAnalysis(analysis);
@@ -395,9 +400,18 @@ function renderAnalysis(analysis) {
   if (analysis.demo) {
     const demo = document.createElement("div");
     demo.className = "demo-banner";
-    demo.textContent = "Demo mode · Configure OPENAI_API_KEY for live web research.";
+    demo.textContent = analysis.research_provider === "grok"
+      ? "Demo mode · Configure XAI_API_KEY for live X research."
+      : "Demo mode · Configure OPENAI_API_KEY for live web research.";
     container.append(demo);
   }
+
+  const providerBadge = document.createElement("div");
+  providerBadge.className = "provider-badge";
+  providerBadge.textContent = analysis.research_provider === "grok"
+    ? "Grok · X research"
+    : "OpenAI · Web research";
+  container.append(providerBadge);
 
   const summary = document.createElement("div");
   summary.className = "analysis-summary";
@@ -481,6 +495,7 @@ function setBusy(busy, message = "", button = null) {
   }
   categorySelect.disabled = busy || categorySelect.options.length <= 1;
   limitSelect.disabled = busy;
+  providerSelect.disabled = busy;
   loadButton.disabled = busy || !state.categoryId;
   analyzeButton.disabled = busy || state.markets.length === 0;
 }

@@ -1,5 +1,6 @@
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIStatusError, OpenAI, RateLimitError
@@ -10,6 +11,8 @@ from models import AnalysisResult, Market, MarketAnalysis, Source
 load_dotenv()
 
 DEFAULT_MODEL = "gpt-5.6-sol"
+DEFAULT_XAI_MODEL = "grok-4.5"
+XAI_BASE_URL = "https://api.x.ai/v1"
 SYSTEM_INSTRUCTIONS = """
 Analyze prediction markets objectively and transparently. Separate observed
 market prices from your own estimate. Use web search for current, reliable
@@ -82,6 +85,12 @@ def _extract_sources(value: Any) -> list[Source]:
             url = item.get("url")
             title = item.get("title")
             if isinstance(url, str) and url.startswith("http"):
+                if not title or str(title).isdigit():
+                    title = (
+                        "X post"
+                        if urlparse(url).netloc in {"x.com", "www.x.com"}
+                        else urlparse(url).netloc
+                    )
                 found[url] = Source(
                     title=str(title or item.get("name") or "Source"),
                     url=url,
@@ -96,7 +105,9 @@ def _extract_sources(value: Any) -> list[Source]:
     return list(found.values())[:12]
 
 
-def _demo_analysis(markets: list[Market], category: str) -> AnalysisResult:
+def _demo_analysis(
+    markets: list[Market], category: str, provider: str
+) -> AnalysisResult:
     analyses = []
     for market in markets:
         probability = market.outcomes[0].probability if market.outcomes else 0.5
@@ -121,14 +132,21 @@ def _demo_analysis(markets: list[Market], category: str) -> AnalysisResult:
         category=category,
         summary="Demo analysis based on current market prices.",
         overall_insights=(
-            "Live web research is disabled until an OpenAI API key is configured."
+            "Live research is disabled until the selected provider is configured."
         ),
         markets=analyses,
         demo=True,
+        research_provider=provider,
     )
 
 
-def analyze_markets(markets: list[Market], category: str) -> AnalysisResult:
+def analyze_markets(
+    markets: list[Market],
+    category: str,
+    provider: str = "openai",
+) -> AnalysisResult:
+    if provider not in {"openai", "grok"}:
+        raise AIUnavailableError("Unsupported research provider.")
     if not markets:
         return AnalysisResult(
             category=category,
@@ -136,22 +154,45 @@ def analyze_markets(markets: list[Market], category: str) -> AnalysisResult:
             overall_insights="Choose another category or try again later.",
         )
 
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = (
+        os.getenv("XAI_API_KEY")
+        if provider == "grok"
+        else os.getenv("OPENAI_API_KEY")
+    )
     if not api_key:
         if os.getenv("DEMO_MODE", "true").casefold() == "true":
-            return _demo_analysis(markets, category)
-        raise AIUnavailableError("OPENAI_API_KEY is not configured.")
+            return _demo_analysis(markets, category, provider)
+        key_name = "XAI_API_KEY" if provider == "grok" else "OPENAI_API_KEY"
+        raise AIUnavailableError(f"{key_name} is not configured.")
 
     try:
-        response = OpenAI(api_key=api_key).responses.parse(
-            model=os.getenv("OPENAI_MODEL", DEFAULT_MODEL),
-            instructions=SYSTEM_INSTRUCTIONS,
-            input=_build_input(markets, category),
-            tools=[{"type": "web_search"}],
-            include=["web_search_call.action.sources"],
-            reasoning={"effort": os.getenv("OPENAI_REASONING_EFFORT", "low")},
-            text_format=GeneratedAnalysis,
+        client = OpenAI(
+            api_key=api_key,
+            base_url=XAI_BASE_URL if provider == "grok" else None,
         )
+        request_options: dict[str, Any] = {
+            "model": (
+                os.getenv("XAI_MODEL", DEFAULT_XAI_MODEL)
+                if provider == "grok"
+                else os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
+            ),
+            "instructions": SYSTEM_INSTRUCTIONS,
+            "input": _build_input(markets, category),
+            "tools": [
+                {"type": "x_search"}
+                if provider == "grok"
+                else {"type": "web_search"}
+            ],
+            "text_format": GeneratedAnalysis,
+        }
+        if provider == "openai":
+            request_options["include"] = ["web_search_call.action.sources"]
+            request_options["reasoning"] = {
+                "effort": os.getenv("OPENAI_REASONING_EFFORT", "low")
+            }
+        else:
+            request_options["prompt_cache_key"] = "predict-with-fun-analysis"
+        response = client.responses.parse(**request_options)
         generated = response.output_parsed
         if generated is None:
             raise AIUnavailableError(
@@ -159,10 +200,12 @@ def analyze_markets(markets: list[Market], category: str) -> AnalysisResult:
             )
     except RateLimitError as exc:
         raise AIUnavailableError(
-            "The OpenAI rate limit was reached. Please try again later."
+            "The research provider rate limit was reached. Please try again later."
         ) from exc
     except (APIConnectionError, APIStatusError) as exc:
-        raise AIUnavailableError("OpenAI is currently unavailable.") from exc
+        raise AIUnavailableError(
+            "The selected research provider is currently unavailable."
+        ) from exc
 
     generated_by_title = {
         item.market_title.casefold(): item for item in generated.markets
@@ -200,4 +243,5 @@ def analyze_markets(markets: list[Market], category: str) -> AnalysisResult:
         overall_insights=generated.overall_insights,
         markets=analyses,
         sources=_extract_sources(response.model_dump()),
+        research_provider=provider,
     )

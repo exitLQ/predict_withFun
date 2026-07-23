@@ -13,6 +13,7 @@ category and uses OpenAI to provide structured context for their probabilities.
 - Volume, liquidity, and implied probabilities
 - Structured AI analysis through the OpenAI Responses API
 - Live web research with source links for current evidence
+- Selectable OpenAI web research or Grok real-time X research
 - One-click analysis and one-month price history for individual markets
 - Instant title search plus volume, liquidity, and probability sorting
 - Device-local watchlist stored in the browser
@@ -66,6 +67,8 @@ Open <http://localhost:8000>. Interactive API documentation is available at
 | `OPENAI_API_KEY` | — | Required for AI analysis |
 | `OPENAI_MODEL` | `gpt-5.6-sol` | OpenAI model used for analysis |
 | `OPENAI_REASONING_EFFORT` | `low` | Reasoning level for analysis |
+| `XAI_API_KEY` | — | Required for Grok and real-time X research |
+| `XAI_MODEL` | `grok-4.5` | Grok model used for X research |
 | `DEMO_MODE` | `true` | Return a market-price demo when no API key is set |
 | `ANALYSIS_REQUESTS_PER_HOUR` | `5` | Analysis limit per client IP |
 | `HOST` | `0.0.0.0` | Server address |
@@ -79,8 +82,8 @@ Open <http://localhost:8000>. Interactive API documentation is available at
 | `GET` | `/api/health` | Service and OpenAI configuration status |
 | `GET` | `/api/categories` | Available categories |
 | `GET` | `/api/markets/{id}?limit=10` | Top markets in a category |
-| `POST` | `/api/analyze?category_id={id}&limit=10` | AI analysis |
-| `POST` | `/api/analyze/{category_id}/{market_slug}` | Single-market analysis |
+| `POST` | `/api/analyze?category_id={id}&provider=grok` | AI analysis |
+| `POST` | `/api/analyze/{category_id}/{market_slug}?provider=grok` | Single-market analysis |
 | `GET` | `/api/history/{category_id}/{market_slug}` | Market price history |
 
 ## Tests
