@@ -14,6 +14,10 @@ category and uses OpenAI to provide structured context for their probabilities.
 - Structured AI analysis through the OpenAI Responses API
 - Live web research with source links for current evidence
 - One-click analysis and one-month price history for individual markets
+- Instant title search plus volume, liquidity, and probability sorting
+- Device-local watchlist stored in the browser
+- Side-by-side comparison for up to three markets
+- CSV and JSON export of the current filtered view
 - Demo mode that works without an OpenAI API key
 - Per-client analysis limits to control API spend
 - Responsive, accessible frontend with no build step

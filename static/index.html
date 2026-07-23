@@ -68,8 +68,45 @@
             Analyze with AI <span aria-hidden="true">✦</span>
           </button>
         </div>
+        <div class="market-tools" aria-label="Market filters and exports">
+          <label class="tool-field tool-search">
+            <span>Search</span>
+            <input id="marketSearch" type="search" placeholder="Search market titles…" autocomplete="off">
+          </label>
+          <label class="tool-field">
+            <span>Sort by</span>
+            <select id="marketSort">
+              <option value="volume">Volume</option>
+              <option value="liquidity">Liquidity</option>
+              <option value="probability-high">Probability: high to low</option>
+              <option value="probability-low">Probability: low to high</option>
+            </select>
+          </label>
+          <label class="tool-field">
+            <span>View</span>
+            <select id="marketView">
+              <option value="all">All markets</option>
+              <option value="watchlist">Watchlist</option>
+            </select>
+          </label>
+          <div class="export-actions">
+            <button class="text-button" id="exportCsv">Export CSV</button>
+            <button class="text-button" id="exportJson">Export JSON</button>
+          </div>
+        </div>
         <div id="marketStats" class="stats" aria-label="Market statistics"></div>
         <div id="marketsGrid" class="market-grid"></div>
+      </section>
+
+      <section id="comparisonSection" class="comparison-section" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="step">Compare / Up to three</p>
+            <h2>Market comparison</h2>
+          </div>
+          <button class="text-button" id="clearComparison">Clear comparison</button>
+        </div>
+        <div id="comparisonGrid" class="comparison-market-grid"></div>
       </section>
 
       <section id="analysisSection" class="analysis-section" hidden>

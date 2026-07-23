@@ -1,16 +1,46 @@
 const API_BASE = "/api";
-const state = { categoryId: "", categoryName: "", markets: [], busy: false };
+function loadWatchlist() {
+  try {
+    const stored = JSON.parse(localStorage.getItem("predict_withFun.watchlist") || "[]");
+    return Array.isArray(stored) ? stored : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+const state = {
+  categoryId: "",
+  categoryName: "",
+  markets: [],
+  visibleMarkets: [],
+  busy: false,
+  watchlist: new Set(loadWatchlist()),
+  comparison: new Set(),
+};
 
 const $ = (id) => document.getElementById(id);
 const categorySelect = $("categorySelect");
 const limitSelect = $("limitSelect");
 const loadButton = $("loadMarketsBtn");
 const analyzeButton = $("analyzeBtn");
+const marketSearch = $("marketSearch");
+const marketSort = $("marketSort");
+const marketView = $("marketView");
 
 document.addEventListener("DOMContentLoaded", initialize);
 categorySelect.addEventListener("change", handleCategoryChange);
 loadButton.addEventListener("click", loadMarkets);
 analyzeButton.addEventListener("click", analyzeMarkets);
+marketSearch.addEventListener("input", applyMarketFilters);
+marketSort.addEventListener("change", applyMarketFilters);
+marketView.addEventListener("change", applyMarketFilters);
+$("exportCsv").addEventListener("click", () => exportMarkets("csv"));
+$("exportJson").addEventListener("click", () => exportMarkets("json"));
+$("clearComparison").addEventListener("click", () => {
+  state.comparison.clear();
+  renderComparison();
+  applyMarketFilters();
+});
 
 async function initialize() {
   await Promise.allSettled([checkHealth(), loadCategories()]);
@@ -63,8 +93,13 @@ function handleCategoryChange() {
   state.categoryId = categorySelect.value;
   state.categoryName = categorySelect.options[categorySelect.selectedIndex]?.text || "";
   state.markets = [];
+  state.visibleMarkets = [];
+  state.comparison.clear();
+  marketSearch.value = "";
+  marketView.value = "all";
   loadButton.disabled = !state.categoryId;
   $("marketsSection").hidden = true;
+  $("comparisonSection").hidden = true;
   $("analysisSection").hidden = true;
 }
 
@@ -93,17 +128,46 @@ async function loadMarkets() {
 
 function renderMarkets() {
   $("marketsHeading").textContent = state.categoryName;
-  const totalVolume = state.markets.reduce((sum, market) => sum + market.volume, 0);
-  const totalLiquidity = state.markets.reduce((sum, market) => sum + (market.liquidity || 0), 0);
+  applyMarketFilters(false);
+  $("marketsSection").hidden = false;
+  $("marketsSection").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function applyMarketFilters(updateSection = true) {
+  const query = marketSearch.value.trim().toLocaleLowerCase();
+  const watchlistOnly = marketView.value === "watchlist";
+  const sort = marketSort.value;
+  const markets = state.markets.filter((market) => {
+    const matchesQuery = !query || market.title.toLocaleLowerCase().includes(query);
+    const matchesView = !watchlistOnly || state.watchlist.has(market.slug);
+    return matchesQuery && matchesView;
+  });
+  markets.sort((a, b) => {
+    if (sort === "liquidity") return (b.liquidity || 0) - (a.liquidity || 0);
+    if (sort === "probability-high") return (b.outcomes[0]?.probability || 0) - (a.outcomes[0]?.probability || 0);
+    if (sort === "probability-low") return (a.outcomes[0]?.probability || 0) - (b.outcomes[0]?.probability || 0);
+    return b.volume - a.volume;
+  });
+  state.visibleMarkets = markets;
+  const totalVolume = markets.reduce((sum, market) => sum + market.volume, 0);
+  const totalLiquidity = markets.reduce((sum, market) => sum + (market.liquidity || 0), 0);
   $("marketStats").innerHTML = `
-    <div><span>Markets</span><strong>${state.markets.length}</strong></div>
+    <div><span>Markets</span><strong>${markets.length}</strong></div>
     <div><span>Volume</span><strong>${formatMoney(totalVolume)}</strong></div>
     <div><span>Liquidity</span><strong>${formatMoney(totalLiquidity)}</strong></div>
   `;
-  $("marketsGrid").replaceChildren(...state.markets.map(marketCard));
+  if (markets.length) {
+    $("marketsGrid").replaceChildren(...markets.map(marketCard));
+  } else {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = watchlistOnly
+      ? "Your watchlist has no markets in this category."
+      : "No markets match these filters.";
+    $("marketsGrid").replaceChildren(empty);
+  }
   analyzeButton.disabled = state.markets.length === 0;
-  $("marketsSection").hidden = false;
-  $("marketsSection").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (updateSection) renderComparison();
 }
 
 function marketCard(market, index) {
@@ -128,6 +192,8 @@ function marketCard(market, index) {
       <div class="probability-track"><i style="width:${(probability || 0) * 100}%"></i></div>
     </div>
     <div class="card-actions">
+      <button class="text-button watch-button">${state.watchlist.has(market.slug) ? "★ Saved" : "☆ Watch"}</button>
+      <button class="text-button compare-button">${state.comparison.has(market.slug) ? "✓ Compared" : "Compare"}</button>
       <button class="text-button analyze-one">Analyze</button>
       <button class="text-button history-button">History</button>
       ${market.url ? '<a class="card-link" target="_blank" rel="noopener noreferrer" aria-label="Open market on Polymarket">↗</a>' : ""}
@@ -137,10 +203,94 @@ function marketCard(market, index) {
   article.querySelector(".probability span").textContent = outcomeName;
   const link = article.querySelector(".card-link");
   if (link) link.href = market.url;
+  article.querySelector(".watch-button").addEventListener("click", () => toggleWatchlist(market));
+  article.querySelector(".compare-button").addEventListener("click", () => toggleComparison(market));
   article.querySelector(".analyze-one").addEventListener("click", () => analyzeSingleMarket(market, article));
   article.querySelector(".history-button").addEventListener("click", () => showHistory(market, wrapper));
   wrapper.append(article);
   return wrapper;
+}
+
+function toggleWatchlist(market) {
+  if (state.watchlist.has(market.slug)) state.watchlist.delete(market.slug);
+  else state.watchlist.add(market.slug);
+  localStorage.setItem("predict_withFun.watchlist", JSON.stringify([...state.watchlist]));
+  applyMarketFilters();
+}
+
+function toggleComparison(market) {
+  if (state.comparison.has(market.slug)) {
+    state.comparison.delete(market.slug);
+  } else if (state.comparison.size < 3) {
+    state.comparison.add(market.slug);
+  } else {
+    showNotice("You can compare up to three markets.", "neutral", 2400);
+    return;
+  }
+  applyMarketFilters();
+}
+
+function renderComparison() {
+  const markets = state.markets.filter((market) => state.comparison.has(market.slug));
+  $("comparisonSection").hidden = markets.length === 0;
+  const grid = $("comparisonGrid");
+  grid.replaceChildren();
+  markets.forEach((market) => {
+    const card = document.createElement("article");
+    card.className = "comparison-market";
+    const probability = market.outcomes[0]?.probability;
+    card.innerHTML = `
+      <span class="comparison-label"></span>
+      <h3></h3>
+      <div class="comparison-facts">
+        <div><span>Probability</span><strong>${probability == null ? "—" : formatPercent(probability)}</strong></div>
+        <div><span>Volume</span><strong>${formatMoney(market.volume)}</strong></div>
+        <div><span>Liquidity</span><strong>${formatMoney(market.liquidity || 0)}</strong></div>
+      </div>
+    `;
+    card.querySelector(".comparison-label").textContent = market.outcomes[0]?.title || "Primary outcome";
+    card.querySelector("h3").textContent = market.title;
+    grid.append(card);
+  });
+}
+
+function exportMarkets(format) {
+  const markets = state.visibleMarkets;
+  if (!markets.length) {
+    showNotice("There are no visible markets to export.", "neutral", 2400);
+    return;
+  }
+  const rows = markets.map((market) => ({
+    title: market.title,
+    probability: market.outcomes[0]?.probability ?? null,
+    volume: market.volume,
+    liquidity: market.liquidity,
+    category: market.category,
+    url: market.url,
+  }));
+  const content = format === "json"
+    ? JSON.stringify(rows, null, 2)
+    : toCsv(rows);
+  downloadFile(
+    content,
+    `predict_withFun-${state.categoryName.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}.${format}`,
+    format === "json" ? "application/json" : "text/csv",
+  );
+}
+
+function toCsv(rows) {
+  const columns = Object.keys(rows[0]);
+  const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  return [columns.join(","), ...rows.map((row) => columns.map((column) => escape(row[column])).join(","))].join("\n");
+}
+
+function downloadFile(content, name, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 async function analyzeSingleMarket(market, article) {

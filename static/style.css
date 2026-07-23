@@ -89,12 +89,35 @@ select:disabled { opacity: .55; }
 .notice-success { border-color: rgba(200,244,93,.35); color: var(--lime); }
 .notice-error { border-color: rgba(255,122,133,.4); color: var(--red); }
 .section-heading { display: flex; justify-content: space-between; align-items: end; gap: 30px; margin-bottom: 36px; }
+.market-tools {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 220px 160px auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+.tool-field { display: grid; gap: 7px; }
+.tool-field > span { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.tool-field input {
+  height: 48px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 14px;
+  font: inherit;
+}
+.tool-field input::placeholder { color: #626976; }
+.tool-field select { height: 48px; }
+.export-actions { min-height: 48px; display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-bottom: 22px; }
 .stats div { padding: 20px 24px; display: grid; gap: 6px; border-right: 1px solid var(--line); }
 .stats div:last-child { border: 0; }
 .stats span { color: var(--muted); font-size: 12px; }
 .stats strong { font: 500 23px "DM Mono", monospace; }
 .market-grid { display: grid; gap: 8px; }
+.empty-state { border: 1px dashed var(--line); border-radius: var(--radius); padding: 44px 24px; text-align: center; color: var(--muted); }
 .market-wrapper { display: grid; gap: 6px; }
 .market-card {
   min-height: 118px;
@@ -148,6 +171,15 @@ select:disabled { opacity: .55; }
 .analysis-summary p { margin: 0; font-size: 20px; line-height: 1.6; }
 blockquote { margin: 12px 0 30px; padding: 24px 28px; background: var(--lime); color: #14180b; border-radius: var(--radius); font-size: 17px; line-height: 1.6; }
 .analysis-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.comparison-section { border-top: 1px solid var(--line); padding: 48px 0 64px; }
+.comparison-market-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.comparison-market { border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 24px; }
+.comparison-market h3 { min-height: 74px; margin: 12px 0 24px; font-size: 17px; line-height: 1.45; }
+.comparison-label { color: var(--lime); font: 10px "DM Mono", monospace; text-transform: uppercase; }
+.comparison-facts { display: grid; gap: 12px; }
+.comparison-facts div { border-top: 1px solid var(--line); padding-top: 12px; display: flex; justify-content: space-between; gap: 10px; }
+.comparison-facts span { color: var(--muted); font-size: 11px; }
+.comparison-facts strong { font: 500 13px "DM Mono", monospace; }
 .analysis-card { border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); padding: 26px; }
 .analysis-card-head { display: grid; gap: 14px; }
 .badge { width: fit-content; border-radius: 100px; padding: 6px 10px; font: 10px "DM Mono", monospace; text-transform: uppercase; }
@@ -175,11 +207,15 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
 
 @media (max-width: 900px) {
   .control-panel { grid-template-columns: 1fr; gap: 30px; }
+  .market-tools { grid-template-columns: 1fr 1fr; }
+  .tool-search, .export-actions { grid-column: 1 / -1; }
+  .export-actions { justify-content: flex-start; }
   .controls { grid-template-columns: 1fr 120px; }
   .button-primary { grid-column: 1 / -1; }
   .market-card { grid-template-columns: 36px 1fr 150px; gap: 12px; padding: 18px; }
   .card-actions { grid-column: 2 / -1; justify-content: flex-start; }
   .analysis-grid { grid-template-columns: 1fr; }
+  .comparison-market-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
   .shell { width: min(100% - 24px, 1240px); }
@@ -188,6 +224,8 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
   .hero { padding: 64px 0 52px; }
   .hero h1 { font-size: clamp(50px, 17vw, 76px); }
   .controls { grid-template-columns: 1fr; }
+  .market-tools { grid-template-columns: 1fr; }
+  .tool-search, .export-actions { grid-column: auto; }
   .button-primary { grid-column: auto; }
   .section-heading { align-items: stretch; flex-direction: column; }
   .stats { grid-template-columns: 1fr; }
