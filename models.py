@@ -19,6 +19,7 @@ class Market(BaseModel):
     category: str | None = None
     active: bool = True
     url: str | None = None
+    token_id: str | None = None
 
 
 class Category(BaseModel):
@@ -37,11 +38,23 @@ class MarketAnalysis(BaseModel):
     reasoning: str
 
 
+class Source(BaseModel):
+    title: str
+    url: str
+
+
+class PricePoint(BaseModel):
+    timestamp: int
+    price: float = Field(ge=0, le=1)
+
+
 class AnalysisResult(BaseModel):
     category: str
     summary: str
     markets: list[MarketAnalysis] = Field(default_factory=list)
     overall_insights: str | None = None
+    sources: list[Source] = Field(default_factory=list)
+    demo: bool = False
     disclaimer: str = (
         "AI-generated assessment for informational purposes only — "
         "not financial advice."
@@ -51,3 +64,4 @@ class AnalysisResult(BaseModel):
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     openai_configured: bool
+    demo_mode: bool

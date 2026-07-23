@@ -12,6 +12,10 @@ category and uses OpenAI to provide structured context for their probabilities.
 - Top 5, 10, 15, or 25 markets by trading volume
 - Volume, liquidity, and implied probabilities
 - Structured AI analysis through the OpenAI Responses API
+- Live web research with source links for current evidence
+- One-click analysis and one-month price history for individual markets
+- Demo mode that works without an OpenAI API key
+- Per-client analysis limits to control API spend
 - Responsive, accessible frontend with no build step
 - API error handling, health check, and a five-minute data cache
 - Tests, linting, GitHub Actions, and Docker deployment
@@ -57,6 +61,9 @@ Open <http://localhost:8000>. Interactive API documentation is available at
 | --- | --- | --- |
 | `OPENAI_API_KEY` | — | Required for AI analysis |
 | `OPENAI_MODEL` | `gpt-5.6-sol` | OpenAI model used for analysis |
+| `OPENAI_REASONING_EFFORT` | `low` | Reasoning level for analysis |
+| `DEMO_MODE` | `true` | Return a market-price demo when no API key is set |
+| `ANALYSIS_REQUESTS_PER_HOUR` | `5` | Analysis limit per client IP |
 | `HOST` | `0.0.0.0` | Server address |
 | `PORT` | `8000` | Server port |
 | `ENVIRONMENT` | `development` | Runtime environment |
@@ -69,6 +76,8 @@ Open <http://localhost:8000>. Interactive API documentation is available at
 | `GET` | `/api/categories` | Available categories |
 | `GET` | `/api/markets/{id}?limit=10` | Top markets in a category |
 | `POST` | `/api/analyze?category_id={id}&limit=10` | AI analysis |
+| `POST` | `/api/analyze/{category_id}/{market_slug}` | Single-market analysis |
+| `GET` | `/api/history/{category_id}/{market_slug}` | Market price history |
 
 ## Tests
 

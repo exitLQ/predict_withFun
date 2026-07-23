@@ -8,6 +8,7 @@ def test_market_parses_string_encoded_outcomes():
             "question": "Will it rain?",
             "outcomes": '["Yes", "No"]',
             "outcomePrices": '["0.62", "0.38"]',
+            "clobTokenIds": '["token-yes", "token-no"]',
             "volume": "1200.5",
             "liquidity": "300",
             "active": True,
@@ -20,6 +21,26 @@ def test_market_parses_string_encoded_outcomes():
     assert market.outcomes[0].title == "Yes"
     assert market.outcomes[0].probability == 0.62
     assert market.url == "https://polymarket.com/event/rain-event"
+    assert market.token_id == "token-yes"
+
+
+def test_price_history_is_normalized(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"history": [{"t": 100, "p": "0.42"}]}
+
+    monkeypatch.setattr(
+        polymarket_client._session,
+        "get",
+        lambda *args, **kwargs: Response(),
+    )
+
+    history = polymarket_client.fetch_price_history("token", "1d", 60)
+
+    assert history == [{"timestamp": 100, "price": 0.42}]
 
 
 def test_top_markets_are_flattened_and_sorted(monkeypatch):

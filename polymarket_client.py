@@ -8,6 +8,7 @@ from models import Category, Market, Outcome
 
 POLYMARKET_BASE_URL = "https://gamma-api.polymarket.com"
 POLYMARKET_WEB_URL = "https://polymarket.com/event"
+CLOB_BASE_URL = "https://clob.polymarket.com"
 REQUEST_TIMEOUT = 20
 CACHE_TTL_SECONDS = 300
 
@@ -107,6 +108,7 @@ def _market_from_api(
 
     names = _as_list(raw.get("outcomes"))
     prices = _as_list(raw.get("outcomePrices"))
+    token_ids = _as_list(raw.get("clobTokenIds"))
     outcomes = []
     for index, name in enumerate(names):
         probability = min(1.0, _as_float(prices[index] if index < len(prices) else 0))
@@ -126,6 +128,7 @@ def _market_from_api(
         category=category,
         active=bool(raw.get("active", True)),
         url=f"{POLYMARKET_WEB_URL}/{event_slug}" if event_slug else None,
+        token_id=str(token_ids[0]) if token_ids else None,
     )
 
 
@@ -145,3 +148,30 @@ def get_top_markets_for_category(
                     markets.append(market)
 
     return sorted(markets, key=lambda market: market.volume, reverse=True)[:n]
+
+
+def fetch_price_history(
+    token_id: str, interval: str = "1m", fidelity: int = 60
+) -> list[dict[str, float | int]]:
+    if interval not in {"1h", "6h", "1d", "1w", "1m", "max"}:
+        raise PolymarketError("Unsupported price-history interval.")
+    try:
+        response = _session.get(
+            f"{CLOB_BASE_URL}/prices-history",
+            params={
+                "market": token_id,
+                "interval": interval,
+                "fidelity": fidelity,
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise PolymarketError("Price history is currently unavailable.") from exc
+    history = data.get("history", []) if isinstance(data, dict) else []
+    return [
+        {"timestamp": int(point["t"]), "price": min(1.0, _as_float(point["p"]))}
+        for point in history
+        if isinstance(point, dict) and "t" in point and "p" in point
+    ]

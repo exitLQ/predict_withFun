@@ -32,7 +32,7 @@ async function checkHealth() {
     const health = await api("/health");
     $("apiStatus").textContent = health.openai_configured
       ? "Live · AI ready"
-      : "Live · AI key missing";
+      : health.demo_mode ? "Live · Demo mode" : "Live · AI key missing";
   } catch (_) {
     $("apiStatus").textContent = "Connection unavailable";
     document.querySelector(".status-dot").classList.add("offline");
@@ -107,6 +107,8 @@ function renderMarkets() {
 }
 
 function marketCard(market, index) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "market-wrapper";
   const article = document.createElement("article");
   article.className = "market-card";
   const probability = market.outcomes[0]?.probability;
@@ -125,13 +127,98 @@ function marketCard(market, index) {
       <strong>${probability == null ? "—" : formatPercent(probability)}</strong>
       <div class="probability-track"><i style="width:${(probability || 0) * 100}%"></i></div>
     </div>
-    ${market.url ? '<a class="card-link" target="_blank" rel="noopener noreferrer" aria-label="Open market on Polymarket">↗</a>' : ""}
+    <div class="card-actions">
+      <button class="text-button analyze-one">Analyze</button>
+      <button class="text-button history-button">History</button>
+      ${market.url ? '<a class="card-link" target="_blank" rel="noopener noreferrer" aria-label="Open market on Polymarket">↗</a>' : ""}
+    </div>
   `;
   article.querySelector("h3").textContent = market.title;
   article.querySelector(".probability span").textContent = outcomeName;
   const link = article.querySelector(".card-link");
   if (link) link.href = market.url;
-  return article;
+  article.querySelector(".analyze-one").addEventListener("click", () => analyzeSingleMarket(market, article));
+  article.querySelector(".history-button").addEventListener("click", () => showHistory(market, wrapper));
+  wrapper.append(article);
+  return wrapper;
+}
+
+async function analyzeSingleMarket(market, article) {
+  const button = article.querySelector(".analyze-one");
+  button.disabled = true;
+  button.textContent = "Analyzing …";
+  try {
+    const analysis = await api(
+      `/analyze/${encodeURIComponent(state.categoryId)}/${encodeURIComponent(market.slug)}`,
+      { method: "POST" },
+    );
+    renderAnalysis(analysis);
+  } catch (error) {
+    showNotice(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Analyze";
+  }
+}
+
+async function showHistory(market, wrapper) {
+  let panel = wrapper.querySelector(".history-panel");
+  if (panel) {
+    panel.remove();
+    return;
+  }
+  panel = document.createElement("div");
+  panel.className = "history-panel";
+  panel.innerHTML = '<span class="history-loading">Loading one-month history …</span>';
+  wrapper.append(panel);
+  try {
+    const history = await api(
+      `/history/${encodeURIComponent(state.categoryId)}/${encodeURIComponent(market.slug)}?interval=1m`,
+    );
+    if (history.length < 2) {
+      panel.textContent = "No price history is available for this market.";
+      return;
+    }
+    panel.replaceChildren();
+    const heading = document.createElement("div");
+    heading.className = "history-heading";
+    heading.innerHTML = `<span>One-month price history · ${market.outcomes[0]?.title || "Primary outcome"}</span><strong>${formatPercent(history.at(-1).price)}</strong>`;
+    const canvas = document.createElement("canvas");
+    canvas.width = 1000;
+    canvas.height = 240;
+    canvas.setAttribute("aria-label", `Price history for ${market.title}`);
+    panel.append(heading, canvas);
+    drawHistory(canvas, history);
+  } catch (error) {
+    panel.textContent = error.message;
+  }
+}
+
+function drawHistory(canvas, history) {
+  const context = canvas.getContext("2d");
+  const { width, height } = canvas;
+  const padding = 18;
+  context.clearRect(0, 0, width, height);
+  context.strokeStyle = "#282d37";
+  context.lineWidth = 1;
+  [0.25, 0.5, 0.75].forEach((value) => {
+    const y = padding + (1 - value) * (height - padding * 2);
+    context.beginPath();
+    context.moveTo(padding, y);
+    context.lineTo(width - padding, y);
+    context.stroke();
+  });
+  context.strokeStyle = "#c8f45d";
+  context.lineWidth = 4;
+  context.lineJoin = "round";
+  context.beginPath();
+  history.forEach((point, index) => {
+    const x = padding + (index / (history.length - 1)) * (width - padding * 2);
+    const y = padding + (1 - point.price) * (height - padding * 2);
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  });
+  context.stroke();
 }
 
 async function analyzeMarkets() {
@@ -155,6 +242,13 @@ function renderAnalysis(analysis) {
   const container = $("analysisContent");
   container.replaceChildren();
 
+  if (analysis.demo) {
+    const demo = document.createElement("div");
+    demo.className = "demo-banner";
+    demo.textContent = "Demo mode · Configure OPENAI_API_KEY for live web research.";
+    container.append(demo);
+  }
+
   const summary = document.createElement("div");
   summary.className = "analysis-summary";
   summary.innerHTML = "<span>Summary</span><p></p>";
@@ -171,6 +265,23 @@ function renderAnalysis(analysis) {
   grid.className = "analysis-grid";
   analysis.markets.forEach((item) => grid.append(analysisCard(item)));
   container.append(grid);
+
+  if (analysis.sources?.length) {
+    const sources = document.createElement("div");
+    sources.className = "sources";
+    const title = document.createElement("h3");
+    title.textContent = "Sources";
+    sources.append(title);
+    analysis.sources.forEach((source, index) => {
+      const link = document.createElement("a");
+      link.href = source.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = `${index + 1}. ${source.title}`;
+      sources.append(link);
+    });
+    container.append(sources);
+  }
 
   const disclaimer = document.createElement("p");
   disclaimer.className = "disclaimer";
