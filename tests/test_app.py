@@ -9,6 +9,8 @@ def test_health_endpoint(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("BACKGROUND_QUEUE", raising=False)
 
     response = client.get("/api/health")
 
@@ -18,6 +20,8 @@ def test_health_endpoint(monkeypatch):
         "openai_configured": False,
         "grok_configured": False,
         "claude_configured": False,
+        "redis_configured": False,
+        "background_queue": "local",
         "demo_mode": True,
     }
 
@@ -42,15 +46,19 @@ def test_compare_endpoint_returns_all_demo_providers(monkeypatch):
     monkeypatch.setenv("DEMO_MODE", "true")
     monkeypatch.setattr(
         app,
-        "fetch_categories",
-        lambda: [app.Category(id="1", name="Politics")],
-    )
-    monkeypatch.setattr(
-        app,
-        "get_top_markets_for_category",
-        lambda *args: [
-            app.Market(slug="demo", title="Demo", volume=100, outcomes=[])
-        ],
+        "run_comparison_task",
+        lambda *args: app.ProviderComparison(
+            results=[
+                app.AnalysisResult(
+                    category="Politics",
+                    summary="Demo",
+                    demo=True,
+                    research_provider=provider,
+                    requested_provider=provider,
+                )
+                for provider in ("openai", "grok", "claude")
+            ]
+        ).model_dump(mode="json"),
     )
 
     response = client.post("/api/compare?category_id=1&limit=1")

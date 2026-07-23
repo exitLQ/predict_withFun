@@ -59,6 +59,17 @@ async function api(path, options = {}) {
   return body;
 }
 
+async function waitForJob(job, onProgress) {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    if (job.status === "finished") return job.result;
+    if (job.status === "failed") throw new Error(job.error || "Background job failed.");
+    if (onProgress) onProgress(job.status);
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    job = await api(`/jobs/${encodeURIComponent(job.id)}`);
+  }
+  throw new Error("Background job timed out.");
+}
+
 async function checkHealth() {
   try {
     const health = await api("/health");
@@ -67,9 +78,12 @@ async function checkHealth() {
       health.grok_configured ? "Grok" : null,
       health.claude_configured ? "Claude" : null,
     ].filter(Boolean);
+    const infrastructure = health.redis_configured
+      ? ` · Redis + ${health.background_queue.toUpperCase()} jobs`
+      : " · Local jobs";
     $("apiStatus").textContent = ready.length
-      ? `Live · ${ready.join(" + ")} ready`
-      : health.demo_mode ? "Live · Demo mode" : "Live · AI key missing";
+      ? `Live · ${ready.join(" + ")} ready${infrastructure}`
+      : health.demo_mode ? `Live · Demo mode${infrastructure}` : "Live · AI key missing";
   } catch (_) {
     $("apiStatus").textContent = "Connection unavailable";
     document.querySelector(".status-dot").classList.add("offline");
@@ -109,7 +123,10 @@ async function syncAccuracy() {
   button.disabled = true;
   button.textContent = "Checking …";
   try {
-    const result = await api("/accuracy/sync", { method: "POST" });
+    const job = await api("/jobs/accuracy-sync", { method: "POST" });
+    const result = await waitForJob(job, (status) => {
+      button.textContent = status === "queued" ? "Queued …" : "Checking …";
+    });
     showNotice(
       `Checked ${result.checked_markets} markets · scored ${result.scored_forecasts} forecasts.`,
       "success",
@@ -436,12 +453,17 @@ async function analyzeMarkets() {
   try {
     const limit = Math.min(Number(limitSelect.value), 10);
     const isComparison = providerSelect.value === "compare";
-    const analysis = await api(
+    let analysis = await api(
       isComparison
-        ? `/compare?category_id=${encodeURIComponent(state.categoryId)}&limit=${limit}`
+        ? `/jobs/compare?category_id=${encodeURIComponent(state.categoryId)}&limit=${limit}`
         : `/analyze?category_id=${encodeURIComponent(state.categoryId)}&limit=${limit}&provider=${providerSelect.value}`,
       { method: "POST" },
     );
+    if (isComparison) {
+      analysis = await waitForJob(analysis, (status) => {
+        analyzeButton.innerHTML = `<span class="mini-spinner"></span>${status === "queued" ? "Queued …" : "Comparing providers …"}`;
+      });
+    }
     if (isComparison) renderComparisonAnalysis(analysis);
     else renderAnalysis(analysis);
   } catch (error) {

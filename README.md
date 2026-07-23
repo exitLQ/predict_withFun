@@ -25,6 +25,7 @@ estimates side by side.
 - [Local installation](#local-installation)
 - [Configuration](#configuration)
 - [Caching, fallback, and rate limits](#caching-fallback-and-rate-limits)
+- [Redis and background jobs](#redis-and-background-jobs)
 - [Persistent analysis history](#persistent-analysis-history)
 - [Accuracy tracking](#accuracy-tracking)
 - [Provider synthesis](#provider-synthesis)
@@ -64,6 +65,8 @@ estimates side by side.
 ### Cost and performance controls
 
 - Caches identical analyses for 30 minutes by default
+- Shares cache entries, rate limits, and job status through Redis when configured
+- Runs provider comparisons and resolution checks as pollable background jobs
 - Shows whether a result came from the cache
 - Reports input tokens, output tokens, and detected search calls
 - Calculates an estimated USD cost for each new analysis
@@ -319,6 +322,11 @@ application.
 | `HOST` | `0.0.0.0` | Bind address when running `python app.py` |
 | `PORT` | `8000` | HTTP port |
 | `DATABASE_URL` | `sqlite:///./predict_withfun.db` | PostgreSQL or SQLite connection URL |
+| `REDIS_URL` | — | Redis-compatible URL for shared infrastructure |
+| `BACKGROUND_QUEUE` | `local` | `local` thread jobs or external `rq` workers |
+| `LOCAL_JOB_WORKERS` | `3` | Maximum local background-job threads |
+| `JOB_TIMEOUT` | `600` | RQ job timeout in seconds |
+| `JOB_RESULT_TTL` | `3600` | Shared job-result lifetime in seconds |
 
 Boolean values are enabled only when their value is `true`, ignoring letter
 case.
@@ -347,8 +355,8 @@ figures for budgeting.
 
 ### Analysis cache
 
-The analysis cache is an in-memory dictionary inside the application process.
-Its key includes:
+The analysis cache uses Redis when `REDIS_URL` is configured and falls back to
+an in-memory dictionary otherwise. Its key includes:
 
 - selected provider;
 - category name;
@@ -361,8 +369,8 @@ estimated API cost.
 
 Important cache properties:
 
-- The cache is cleared whenever the process restarts.
-- Separate application instances do not share entries.
+- The local fallback cache is cleared whenever the process restarts.
+- Redis-backed entries are shared across application instances.
 - Changing the TTL does not persist existing entries.
 - The cache is not a historical-analysis database.
 
@@ -397,8 +405,46 @@ The default limit is five requests per hour.
   call multiple providers.
 - Market browsing and price-history requests are not included.
 
-The limiter is process-local. For a multi-instance public deployment, replace
-it with a shared store such as Redis if strict global enforcement is required.
+The limiter uses an atomic Redis sorted-set operation when Redis is available.
+Without Redis it falls back to the original process-local sliding window.
+
+## Redis and background jobs
+
+Redis is optional locally and recommended for multi-instance deployments. It
+provides:
+
+- shared analysis-cache entries;
+- shared per-IP sliding-window request limits;
+- background-job status and results that any web instance can poll.
+
+Provider comparisons and resolution checks are submitted through job
+endpoints. The API immediately returns a job ID, and the browser polls
+`GET /api/jobs/{job_id}` until the job finishes or fails.
+
+| Mode | Behavior |
+| --- | --- |
+| `BACKGROUND_QUEUE=local` | A bounded thread pool runs jobs in the web process; Redis shares status when configured |
+| `BACKGROUND_QUEUE=rq` | Jobs enter the `predict_with_fun` Redis queue for separate workers |
+
+Local mode requires no additional process and is the default. Jobs can be lost
+if the web process restarts. RQ mode provides worker isolation and requires
+`REDIS_URL` plus at least one continuously running worker:
+
+```bash
+rq worker predict_with_fun
+```
+
+Run Redis locally with Docker:
+
+```bash
+docker run --rm -p 6379:6379 redis:latest
+```
+
+Then set:
+
+```text
+REDIS_URL=redis://localhost:6379/0
+```
 
 ## Persistent analysis history
 
@@ -684,6 +730,45 @@ example omits its other required fields for readability. The response also
 contains `synthesis`, including normalized `provider_weights` and one
 consensus record per analyzed market.
 
+The synchronous endpoint remains available for API compatibility. The browser
+uses the background endpoint for comparisons.
+
+### `POST /api/jobs/compare`
+
+Queues a comparison and returns a job ID with status `queued`.
+
+```bash
+curl -X POST \
+  "http://localhost:8000/api/jobs/compare?category_id=1&limit=5"
+```
+
+### `POST /api/jobs/accuracy-sync`
+
+Queues a resolution check.
+
+```bash
+curl -X POST \
+  "http://localhost:8000/api/jobs/accuracy-sync?limit=100"
+```
+
+### `GET /api/jobs/{job_id}`
+
+Returns `queued`, `running`, `finished`, or `failed`. Successful job output is
+stored in `result`; failed jobs expose `error`.
+
+```json
+{
+  "id": "8db66d3e-...",
+  "status": "finished",
+  "result": {
+    "checked_markets": 25,
+    "newly_resolved_markets": 2,
+    "scored_forecasts": 6
+  },
+  "error": null
+}
+```
+
 ### `POST /api/analyze/{category_id}/{market_slug}`
 
 Analyzes one market.
@@ -855,6 +940,7 @@ The test suite covers:
 - resolution parsing, Brier scoring, and provider accuracy summaries;
 - provider weighting, consensus probabilities, and disagreement classification;
 - URL canonicalization, deduplication, source classification, and ranking.
+- Redis-backed cache/status operations and local background-job completion.
 
 GitHub Actions installs `requirements-dev.txt`, runs Ruff, and executes pytest
 on every configured workflow trigger. A red workflow means at least one lint
@@ -919,17 +1005,29 @@ The included `render.yaml` defines a Docker web service named
 5. Deploy the Blueprint.
 6. Confirm that `/api/health` returns `status: ok`.
 
-The Blueprint already configures the default models, cache TTL, provider
-fallback, and health-check path. API keys use `sync: false` and must be entered
-in Render.
+The Blueprint configures PostgreSQL, a private Render Key Value instance,
+default models, cache TTL, provider fallback, and the health-check path. API
+keys use `sync: false` and must be entered in Render.
+
+The Blueprint uses local background threads so it can remain on the free web
+plan. For isolated RQ execution, create a Render background worker with the
+same repository and environment, set `BACKGROUND_QUEUE=rq` on the web service,
+and use this worker start command:
+
+```bash
+rq worker predict_with_fun
+```
+
+Render background workers do not offer a free instance type, so this optional
+paid resource is deliberately not created automatically by `render.yaml`.
 
 Do not put real keys in `render.yaml`, `.env.example`, source code, GitHub
 Actions logs, screenshots, or issues.
 
 ### Production considerations
 
-The current cache and rate limiter are held in process memory. For horizontal
-scaling, use a shared cache and limiter. Also consider:
+Configure Redis for horizontal scaling so cache, rate limits, and job status
+are shared. Also consider:
 
 - HTTPS at the reverse proxy;
 - trusted proxy and client-IP configuration;
@@ -947,6 +1045,9 @@ scaling, use a shared cache and limiter. Also consider:
 │   └── workflows/           # GitHub Actions CI
 ├── app.py                   # FastAPI routes, limits, and static delivery
 ├── database.py              # PostgreSQL/SQLite analysis persistence
+├── infrastructure.py        # Redis cache, limits, and shared job status
+├── job_queue.py             # Local and RQ background-job adapter
+├── job_tasks.py             # Importable background task functions
 ├── models.py                # Pydantic request and response models
 ├── openai_analyzer.py       # All AI providers, cache, fallback, and costs
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
@@ -981,6 +1082,20 @@ scaling, use a shared cache and limiter. Also consider:
 - uses PostgreSQL in production and SQLite locally;
 - stores validated result JSON and searchable metadata;
 - lists saved analyses and restores complete results.
+
+`infrastructure.py`:
+
+- creates the optional Redis connection;
+- reads and writes shared cache entries;
+- applies distributed rate limits;
+- stores expiring job status and results.
+
+`job_queue.py` and `job_tasks.py`:
+
+- submit work to local threads or RQ;
+- expose consistent job-state responses;
+- run comparisons and resolution checks outside request handling;
+- preserve synchronous endpoints for direct API clients.
 
 `polymarket_client.py`:
 
@@ -1092,6 +1207,17 @@ interface.
 The client has reached `ANALYSIS_REQUESTS_PER_HOUR`. Wait for the sliding
 one-hour window or adjust the limit for your deployment.
 
+### A background job stays queued
+
+With `BACKGROUND_QUEUE=rq`, verify that `REDIS_URL` is reachable and an RQ
+worker is running on the `predict_with_fun` queue. Use
+`BACKGROUND_QUEUE=local` when no external worker is available.
+
+### Redis is unavailable
+
+The application degrades to local cache, rate limiting, and background threads.
+Check `/api/health`, the Redis URL, network policy, and Redis service status.
+
 ### Provider returns `503`
 
 Common causes include an invalid key, missing model access, rate limiting,
@@ -1129,7 +1255,9 @@ python -m pytest -vv
 - AI estimates can be wrong, stale, biased, or based on incomplete sources.
 - Source extraction depends on provider response formats.
 - Cost reporting is approximate.
-- Cache and rate-limit state are not shared across processes.
+- Local fallback cache, rate limits, and jobs are process-specific without Redis.
+- Local background jobs do not survive process restarts.
+- RQ mode requires a separately operated worker.
 - There is no authentication or user-specific server-side storage.
 - Watchlists exist only in the current browser.
 - Database migrations are currently additive and initialized by application code.

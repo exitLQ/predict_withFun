@@ -25,6 +25,18 @@ services:
         fromDatabase:
           name: predict-with-fun-db
           property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: predict-with-fun-cache
+          property: connectionString
+      - key: BACKGROUND_QUEUE
+        value: local
+  - type: keyvalue
+    name: predict-with-fun-cache
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
 
 databases:
   - name: predict-with-fun-db

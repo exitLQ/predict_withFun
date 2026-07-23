@@ -6,3 +6,5 @@ anthropic==0.118.0
 python-dotenv==1.2.2
 pydantic==2.13.4
 psycopg[binary]==3.3.2
+redis==8.0.1
+rq==2.10.0

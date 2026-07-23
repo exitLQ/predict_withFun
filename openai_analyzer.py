@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from openai import APIConnectionError, APIStatusError, OpenAI, RateLimitError
 from pydantic import BaseModel, Field
 
+from infrastructure import shared_cache_get, shared_cache_set
 from models import AnalysisResult, Market, MarketAnalysis, Source, UsageInfo
 from source_quality import assess_source
 
@@ -205,6 +206,12 @@ def _cache_key(markets: list[Market], category: str, provider: str) -> str:
 
 
 def _cached_result(key: str) -> AnalysisResult | None:
+    shared = shared_cache_get(key)
+    if shared:
+        result = AnalysisResult.model_validate(shared)
+        result.cached = True
+        result.usage.estimated_cost_usd = 0
+        return result
     cached = _analysis_cache.get(key)
     if not cached:
         return None
@@ -448,6 +455,11 @@ def analyze_markets(
             result.requested_provider = provider
             result.fallback_used = candidate != provider
             _analysis_cache[key] = (time.monotonic(), deepcopy(result))
+            shared_cache_set(
+                key,
+                result.model_dump(mode="json"),
+                int(os.getenv("ANALYSIS_CACHE_TTL", "1800")),
+            )
             return result
         except AIUnavailableError as exc:
             last_error = exc

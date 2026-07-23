@@ -1,6 +1,5 @@
 import os
 import time
-from asyncio import gather
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -14,10 +13,11 @@ from database import (
     get_analysis,
     list_analyses,
     list_forecast_scores,
-    resolve_market_forecasts,
     save_analysis,
-    unresolved_market_slugs,
 )
+from infrastructure import distributed_rate_limit_allowed
+from job_queue import get_job_status, submit_job
+from job_tasks import run_accuracy_sync_task, run_comparison_task
 from models import (
     AccuracySummary,
     AnalysisHistoryItem,
@@ -25,6 +25,7 @@ from models import (
     Category,
     ForecastScore,
     HealthResponse,
+    JobStatus,
     Market,
     PricePoint,
     ProviderComparison,
@@ -34,11 +35,9 @@ from openai_analyzer import AIUnavailableError, analyze_markets
 from polymarket_client import (
     PolymarketError,
     fetch_categories,
-    fetch_market_resolution,
     fetch_price_history,
     get_top_markets_for_category,
 )
-from synthesis import synthesize_comparison
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -55,6 +54,14 @@ _analysis_requests: dict[str, deque[float]] = defaultdict(deque)
 def _enforce_analysis_limit(request: Request) -> None:
     limit = int(os.getenv("ANALYSIS_REQUESTS_PER_HOUR", "5"))
     identity = request.client.host if request.client else "unknown"
+    distributed = distributed_rate_limit_allowed(identity, limit)
+    if distributed is False:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Analysis limit reached ({limit} per hour). Try again later.",
+        )
+    if distributed is True:
+        return
     now = time.time()
     requests = _analysis_requests[identity]
     while requests and now - requests[0] > 3600:
@@ -87,6 +94,10 @@ async def health() -> HealthResponse:
         openai_configured=bool(os.getenv("OPENAI_API_KEY")),
         grok_configured=bool(os.getenv("XAI_API_KEY")),
         claude_configured=bool(os.getenv("ANTHROPIC_API_KEY")),
+        redis_configured=bool(os.getenv("REDIS_URL")),
+        background_queue=(
+            "rq" if os.getenv("BACKGROUND_QUEUE", "local") == "rq" else "local"
+        ),
         demo_mode=(
             not bool(
                 os.getenv("OPENAI_API_KEY")
@@ -152,53 +163,12 @@ async def compare_category_markets(
 ) -> ProviderComparison:
     _enforce_analysis_limit(request)
     try:
-        category = await _category_or_404(category_id)
-        markets = await run_in_threadpool(
-            get_top_markets_for_category, category_id, category.name, limit
-        )
-    except PolymarketError as exc:
+        data = await run_in_threadpool(run_comparison_task, category_id, limit)
+        return ProviderComparison.model_validate(data)
+    except (PolymarketError, ValueError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    providers = [
-        provider
-        for provider, key in (
-            ("openai", "OPENAI_API_KEY"),
-            ("grok", "XAI_API_KEY"),
-            ("claude", "ANTHROPIC_API_KEY"),
-        )
-        if os.getenv(key)
-    ]
-    if not providers and os.getenv("DEMO_MODE", "true").casefold() == "true":
-        providers = ["openai", "grok", "claude"]
-    if not providers:
-        raise HTTPException(status_code=503, detail="No AI provider is configured.")
-
-    async def run_provider(provider: str) -> tuple[str, AnalysisResult | Exception]:
-        try:
-            result = await run_in_threadpool(
-                analyze_markets, markets, category.name, provider, False
-            )
-            return provider, result
-        except AIUnavailableError as exc:
-            return provider, exc
-
-    outcomes = await gather(*(run_provider(provider) for provider in providers))
-    successful = [
-        result for _, result in outcomes if isinstance(result, AnalysisResult)
-    ]
-    await gather(
-        *(run_in_threadpool(save_analysis, result) for result in successful)
-    )
-    accuracy = await run_in_threadpool(accuracy_summaries)
-    return ProviderComparison(
-        results=successful,
-        errors={
-            provider: str(result)
-            for provider, result in outcomes
-            if isinstance(result, Exception)
-        },
-        synthesis=synthesize_comparison(successful, accuracy),
-    )
+    except AIUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post(
@@ -258,31 +228,37 @@ async def get_forecast_scores(
     return await run_in_threadpool(list_forecast_scores, limit)
 
 
-def _sync_resolutions(limit: int) -> ResolutionSyncResult:
-    slugs = unresolved_market_slugs(limit)
-    resolved_markets = 0
-    scored_forecasts = 0
-    for slug in slugs:
-        try:
-            outcome = fetch_market_resolution(slug)
-        except PolymarketError:
-            continue
-        if outcome is None:
-            continue
-        resolved_markets += 1
-        scored_forecasts += resolve_market_forecasts(slug, outcome)
-    return ResolutionSyncResult(
-        checked_markets=len(slugs),
-        newly_resolved_markets=resolved_markets,
-        scored_forecasts=scored_forecasts,
-    )
-
-
 @app.post("/api/accuracy/sync", response_model=ResolutionSyncResult)
 async def sync_accuracy(
     limit: int = Query(default=100, ge=1, le=500),
 ) -> ResolutionSyncResult:
-    return await run_in_threadpool(_sync_resolutions, limit)
+    data = await run_in_threadpool(run_accuracy_sync_task, limit)
+    return ResolutionSyncResult.model_validate(data)
+
+
+@app.post("/api/jobs/compare", response_model=JobStatus)
+async def submit_comparison_job(
+    request: Request,
+    category_id: str = Query(..., min_length=1),
+    limit: int = Query(default=10, ge=1, le=10),
+) -> JobStatus:
+    _enforce_analysis_limit(request)
+    return submit_job(run_comparison_task, category_id, limit)
+
+
+@app.post("/api/jobs/accuracy-sync", response_model=JobStatus)
+async def submit_accuracy_sync_job(
+    limit: int = Query(default=100, ge=1, le=500),
+) -> JobStatus:
+    return submit_job(run_accuracy_sync_task, limit)
+
+
+@app.get("/api/jobs/{job_id}", response_model=JobStatus)
+async def read_job_status(job_id: str) -> JobStatus:
+    status = get_job_status(job_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Background job not found.")
+    return status
 
 
 @app.get(

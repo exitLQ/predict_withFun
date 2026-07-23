@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -152,9 +152,18 @@ class ResolutionSyncResult(BaseModel):
     scored_forecasts: int = Field(ge=0)
 
 
+class JobStatus(BaseModel):
+    id: str
+    status: Literal["queued", "running", "finished", "failed"]
+    result: dict[str, Any] | None = None
+    error: str | None = None
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     openai_configured: bool
     grok_configured: bool
     claude_configured: bool
+    redis_configured: bool
+    background_queue: Literal["local", "rq"]
     demo_mode: bool
