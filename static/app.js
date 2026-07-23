@@ -42,9 +42,10 @@ $("clearComparison").addEventListener("click", () => {
   renderComparison();
   applyMarketFilters();
 });
+$("syncAccuracy").addEventListener("click", syncAccuracy);
 
 async function initialize() {
-  await Promise.allSettled([checkHealth(), loadCategories()]);
+  await Promise.allSettled([checkHealth(), loadCategories(), loadAccuracy()]);
 }
 
 async function api(path, options = {}) {
@@ -72,6 +73,54 @@ async function checkHealth() {
   } catch (_) {
     $("apiStatus").textContent = "Connection unavailable";
     document.querySelector(".status-dot").classList.add("offline");
+  }
+}
+
+async function loadAccuracy() {
+  try {
+    const summaries = await api("/accuracy");
+    const grid = $("accuracyGrid");
+    if (!summaries.length) return;
+    grid.replaceChildren(...summaries.map((summary) => {
+      const card = document.createElement("article");
+      card.className = "comparison-market";
+      const improvement = summary.mean_market_brier_score - summary.mean_brier_score;
+      card.innerHTML = `
+        <span class="comparison-label"></span>
+        <h3></h3>
+        <div class="comparison-facts">
+          <div><span>Resolved forecasts</span><strong>${summary.resolved_forecasts}</strong></div>
+          <div><span>AI Brier score</span><strong>${summary.mean_brier_score.toFixed(4)}</strong></div>
+          <div><span>Market Brier score</span><strong>${summary.mean_market_brier_score.toFixed(4)}</strong></div>
+          <div><span>vs. market</span><strong class="${improvement > 0 ? "positive" : "negative"}">${improvement > 0 ? "Better" : "Worse"} ${Math.abs(improvement).toFixed(4)}</strong></div>
+        </div>
+      `;
+      card.querySelector(".comparison-label").textContent = "Provider";
+      card.querySelector("h3").textContent = summary.provider;
+      return card;
+    }));
+  } catch (_) {
+    // Accuracy is optional while the database is being initialized.
+  }
+}
+
+async function syncAccuracy() {
+  const button = $("syncAccuracy");
+  button.disabled = true;
+  button.textContent = "Checking …";
+  try {
+    const result = await api("/accuracy/sync", { method: "POST" });
+    showNotice(
+      `Checked ${result.checked_markets} markets · scored ${result.scored_forecasts} forecasts.`,
+      "success",
+      3500,
+    );
+    await loadAccuracy();
+  } catch (error) {
+    showNotice(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Check resolutions";
   }
 }
 

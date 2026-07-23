@@ -73,3 +73,27 @@ def test_top_markets_are_flattened_and_sorted(monkeypatch):
     markets = polymarket_client.get_top_markets_for_category("1", "Test", 1)
 
     assert [market.slug for market in markets] == ["large"]
+
+
+def test_closed_market_resolution_is_detected(monkeypatch):
+    monkeypatch.setattr(
+        polymarket_client,
+        "_get",
+        lambda *args: {
+            "closed": True,
+            "outcomes": '["Yes", "No"]',
+            "outcomePrices": '["1", "0"]',
+        },
+    )
+
+    assert polymarket_client.fetch_market_resolution("resolved-market") == 1.0
+
+
+def test_ambiguous_market_is_not_treated_as_resolved(monkeypatch):
+    monkeypatch.setattr(
+        polymarket_client,
+        "_get",
+        lambda *args: {"closed": True, "outcomePrices": '["0.6", "0.4"]'},
+    )
+
+    assert polymarket_client.fetch_market_resolution("ambiguous") is None

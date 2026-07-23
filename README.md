@@ -26,6 +26,7 @@ estimates side by side.
 - [Configuration](#configuration)
 - [Caching, fallback, and rate limits](#caching-fallback-and-rate-limits)
 - [Persistent analysis history](#persistent-analysis-history)
+- [Accuracy tracking](#accuracy-tracking)
 - [Cost estimates](#cost-estimates)
 - [API reference](#api-reference)
 - [Data models](#data-models)
@@ -67,6 +68,7 @@ estimates side by side.
 - Applies a configurable per-client analysis limit
 - Caches Polymarket data for five minutes
 - Stores completed live analyses in PostgreSQL or local SQLite
+- Scores resolved forecasts with Brier score and compares AI with the market
 
 ### Browser tools
 
@@ -413,6 +415,35 @@ The schema and index are created automatically on first use. History can be
 listed with `GET /api/analyses` and an original result can be retrieved with
 `GET /api/analyses/{record_id}`.
 
+## Accuracy tracking
+
+Every stored market forecast creates a separate scoring record containing the
+provider's fair probability and the market probability observed at analysis
+time. Click **Check resolutions** or call `POST /api/accuracy/sync` to inspect
+unresolved markets through Polymarket's market-by-slug endpoint.
+
+A closed market is scored only when its first-outcome settlement price is
+unambiguous: at least `0.999` for outcome `1`, or at most `0.001` for outcome
+`0`. Ambiguous and unresolved markets remain pending.
+
+The Brier score for a binary forecast is:
+
+```text
+(predicted probability - actual outcome)²
+```
+
+Lower scores are better. A perfect forecast scores `0`; a completely wrong
+certain forecast scores `1`. The accuracy dashboard reports per provider:
+
+- number of resolved forecasts;
+- mean AI Brier score;
+- mean Brier score of the market probability captured at analysis time;
+- whether the provider outperformed or underperformed that market baseline;
+- mean absolute probability error.
+
+Historical forecasts are never rewritten when market prices change. Only the
+eventual outcome and derived score are added.
+
 ## Cost estimates
 
 The estimated cost is:
@@ -643,6 +674,29 @@ Returns the complete saved `AnalysisResult` for one history record.
 curl "http://localhost:8000/api/analyses/RECORD_ID"
 ```
 
+### `GET /api/accuracy`
+
+Returns provider-level accuracy aggregates for resolved forecasts.
+
+```bash
+curl http://localhost:8000/api/accuracy
+```
+
+### `GET /api/accuracy/forecasts`
+
+Returns individual pending and resolved forecast records. The optional `limit`
+parameter defaults to `100` and accepts values from 1 to 1,000.
+
+### `POST /api/accuracy/sync`
+
+Checks unresolved market slugs against Polymarket and scores newly resolved
+forecasts. The optional `limit` defaults to `100` and accepts values from 1 to
+500.
+
+```bash
+curl -X POST "http://localhost:8000/api/accuracy/sync?limit=100"
+```
+
 ### Status codes
 
 | Status | Meaning |
@@ -723,6 +777,8 @@ The test suite covers:
 - analysis-cache behavior;
 - automatic fallback;
 - usage and cost calculation.
+- persistent history round trips and skipped demo/cache records;
+- resolution parsing, Brier scoring, and provider accuracy summaries.
 
 GitHub Actions installs `requirements-dev.txt`, runs Ruff, and executes pytest
 on every configured workflow trigger. A red workflow means at least one lint
@@ -855,6 +911,7 @@ scaling, use a shared cache and limiter. Also consider:
 - parses outcomes and prices;
 - selects and sorts active markets;
 - fetches price history;
+- detects unambiguous first-outcome resolutions;
 - maintains the short-lived market-data cache.
 
 `openai_analyzer.py`:

@@ -9,20 +9,32 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from database import get_analysis, list_analyses, save_analysis
+from database import (
+    accuracy_summaries,
+    get_analysis,
+    list_analyses,
+    list_forecast_scores,
+    resolve_market_forecasts,
+    save_analysis,
+    unresolved_market_slugs,
+)
 from models import (
+    AccuracySummary,
     AnalysisHistoryItem,
     AnalysisResult,
     Category,
+    ForecastScore,
     HealthResponse,
     Market,
     PricePoint,
     ProviderComparison,
+    ResolutionSyncResult,
 )
 from openai_analyzer import AIUnavailableError, analyze_markets
 from polymarket_client import (
     PolymarketError,
     fetch_categories,
+    fetch_market_resolution,
     fetch_price_history,
     get_top_markets_for_category,
 )
@@ -229,6 +241,45 @@ async def get_saved_analysis(record_id: str) -> AnalysisResult:
     if result is None:
         raise HTTPException(status_code=404, detail="Analysis not found.")
     return result
+
+
+@app.get("/api/accuracy", response_model=list[AccuracySummary])
+async def get_accuracy_summary() -> list[AccuracySummary]:
+    return await run_in_threadpool(accuracy_summaries)
+
+
+@app.get("/api/accuracy/forecasts", response_model=list[ForecastScore])
+async def get_forecast_scores(
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> list[ForecastScore]:
+    return await run_in_threadpool(list_forecast_scores, limit)
+
+
+def _sync_resolutions(limit: int) -> ResolutionSyncResult:
+    slugs = unresolved_market_slugs(limit)
+    resolved_markets = 0
+    scored_forecasts = 0
+    for slug in slugs:
+        try:
+            outcome = fetch_market_resolution(slug)
+        except PolymarketError:
+            continue
+        if outcome is None:
+            continue
+        resolved_markets += 1
+        scored_forecasts += resolve_market_forecasts(slug, outcome)
+    return ResolutionSyncResult(
+        checked_markets=len(slugs),
+        newly_resolved_markets=resolved_markets,
+        scored_forecasts=scored_forecasts,
+    )
+
+
+@app.post("/api/accuracy/sync", response_model=ResolutionSyncResult)
+async def sync_accuracy(
+    limit: int = Query(default=100, ge=1, le=500),
+) -> ResolutionSyncResult:
+    return await run_in_threadpool(_sync_resolutions, limit)
 
 
 @app.get(

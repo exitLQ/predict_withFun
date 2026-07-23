@@ -33,6 +33,13 @@ def test_analysis_history_round_trip(monkeypatch):
         assert history[0].provider == "claude"
         assert restored is not None
         assert restored.summary == "Saved analysis"
+        assert database.unresolved_market_slugs() == ["saved-market"]
+        assert database.resolve_market_forecasts("saved-market", 1.0) == 1
+        score = database.list_forecast_scores()[0]
+        assert score.brier_score == 0.25
+        summary = database.accuracy_summaries()[0]
+        assert summary.mean_brier_score == 0.25
+        assert summary.mean_market_brier_score == 0.36
     finally:
         Path(database_path).unlink(missing_ok=True)
 

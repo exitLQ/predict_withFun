@@ -175,3 +175,18 @@ def fetch_price_history(
         for point in history
         if isinstance(point, dict) and "t" in point and "p" in point
     ]
+
+
+def fetch_market_resolution(slug: str) -> float | None:
+    data = _get(f"/markets/slug/{slug}", {})
+    if not isinstance(data, dict) or not data.get("closed"):
+        return None
+    prices = _as_list(data.get("outcomePrices"))
+    if not prices:
+        return None
+    first_outcome_price = min(1.0, _as_float(prices[0]))
+    if first_outcome_price >= 0.999:
+        return 1.0
+    if first_outcome_price <= 0.001:
+        return 0.0
+    return None

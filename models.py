@@ -91,6 +91,32 @@ class AnalysisHistoryItem(BaseModel):
     brier_score: float | None = Field(default=None, ge=0, le=1)
 
 
+class ForecastScore(BaseModel):
+    analysis_id: str
+    provider: Literal["openai", "grok", "claude"]
+    created_at: datetime
+    market_slug: str
+    market_title: str
+    predicted_probability: float = Field(ge=0, le=1)
+    market_probability: float = Field(ge=0, le=1)
+    outcome: float | None = Field(default=None, ge=0, le=1)
+    brier_score: float | None = Field(default=None, ge=0, le=1)
+
+
+class AccuracySummary(BaseModel):
+    provider: Literal["openai", "grok", "claude"]
+    resolved_forecasts: int = Field(ge=0)
+    mean_brier_score: float = Field(ge=0, le=1)
+    mean_market_brier_score: float = Field(ge=0, le=1)
+    mean_absolute_error: float = Field(ge=0, le=1)
+
+
+class ResolutionSyncResult(BaseModel):
+    checked_markets: int = Field(ge=0)
+    newly_resolved_markets: int = Field(ge=0)
+    scored_forecasts: int = Field(ge=0)
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     openai_configured: bool
