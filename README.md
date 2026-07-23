@@ -42,6 +42,7 @@ estimates side by side.
 - [API reference](#api-reference)
 - [Data models](#data-models)
 - [Testing and continuous integration](#testing-and-continuous-integration)
+- [Browser end-to-end tests](#browser-end-to-end-tests)
 - [Deployment](#deployment)
 - [Architecture](#architecture)
 - [Security and privacy](#security-and-privacy)
@@ -1337,6 +1338,14 @@ Run tests:
 python -m pytest -vv
 ```
 
+Install and run the real-browser suite:
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
 The test suite covers:
 
 - health and category endpoints;
@@ -1354,6 +1363,7 @@ The test suite covers:
 - readiness dependency behavior and outbound monitoring privacy scrubbing;
 - password/session round trips, CSRF validation, and protected-route policy;
 - CSP/security headers, HSTS behavior, and trusted-host rejection;
+- Playwright market, analysis, account, and saved-history browser journeys;
 - provider weighting, consensus probabilities, and disagreement classification;
 - URL canonicalization, deduplication, source classification, and ranking;
 - prompt framing, control-character cleanup, boundary filtering, and output limits;
@@ -1386,6 +1396,40 @@ tests cover retry classification, `Retry-After`, bounds, and metrics. These
 tests protect integration contracts during SDK/model upgrades, but they do not
 prove that an external provider is online or that a real key can access a
 particular model.
+
+## Browser end-to-end tests
+
+Playwright runs three user-level Chromium scenarios against the real FastAPI
+static application:
+
+1. load a category, display two markets, filter by title, save a market, and
+   switch to the watchlist view;
+2. request a category analysis and verify the summary, probability card, and
+   cited source;
+3. sign in through the account panel and restore a complete saved analysis.
+
+`e2e/app.spec.js` intercepts `/api/**` in the browser and returns deterministic
+fixtures. Google Fonts requests are aborted. The suite therefore performs no
+Polymarket, OpenAI, xAI, Anthropic, Sentry, or other external request and cannot
+incur provider costs. It still exercises the shipped HTML, CSS, JavaScript,
+DOM events, browser storage, filtering, rendering, and responsive selectors.
+
+`playwright.config.js` starts Uvicorn on `127.0.0.1:8765` with a disposable
+SQLite URL, development HTTPS behavior, demo mode, and authentication
+enforcement disabled. Failed tests retain trace, screenshot, and video output
+under ignored Playwright artifact directories. Use:
+
+```bash
+npm run test:e2e:headed
+```
+
+for an interactive local run. Set `PLAYWRIGHT_CHANNEL=chrome` to use an
+installed Chrome channel instead of Playwright's downloaded Chromium.
+
+CI has a separate `e2e` job with Node.js 24. It runs `npm ci`, installs Chromium
+and its Linux dependencies with `playwright install --with-deps chromium`, and
+then executes all browser tests with one worker and one retry. The Python unit
+test and browser jobs remain separate, so their failures are easy to identify.
 
 ## Deployment
 
@@ -1491,6 +1535,7 @@ are shared. Also consider:
 ├── .env.example             # Local configuration template
 ├── .github/
 │   └── workflows/           # GitHub Actions CI
+├── e2e/                     # Mocked Playwright browser journeys
 ├── app.py                   # FastAPI routes, limits, and static delivery
 ├── auth.py                  # Password hashing, sessions, roles, and CSRF
 ├── database.py              # PostgreSQL/SQLite analysis persistence
@@ -1503,6 +1548,9 @@ are shared. Also consider:
 ├── monitoring.py            # Optional Sentry initialization and privacy scrubber
 ├── openai_analyzer.py       # All AI providers, cache, fallback, and costs
 ├── operations.py            # Thread-safe process runtime metrics
+├── package.json             # Pinned Playwright scripts and dependency
+├── package-lock.json        # Reproducible Node dependency resolution
+├── playwright.config.js     # Chromium, artifacts, and test web server
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
 ├── provider_retry.py        # Provider-specific transient-error backoff
 ├── resolution_sync.py       # One-shot automatic resolution CLI
