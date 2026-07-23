@@ -79,3 +79,11 @@ prediction_tool/
 - **APIs**: 
   - Polymarket Gamma API
   - OpenAI API (GPT-4)
+
+<!-- hypertribe:sponsors:start -->
+## Sponsors
+
+[![predict_withFun Sponsors](https://api.tribe.run/tokens/2jEmNDmZF8m8nttfr1GJYU2qgFmRgFSSV7cUiwYiqhbU/sponsors.svg)](https://tribe.run/token/2jEmNDmZF8m8nttfr1GJYU2qgFmRgFSSV7cUiwYiqhbU)
+
+Become a sponsor on [Tribe.run](https://tribe.run/token/2jEmNDmZF8m8nttfr1GJYU2qgFmRgFSSV7cUiwYiqhbU).
+<!-- hypertribe:sponsors:end -->
