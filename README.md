@@ -30,6 +30,7 @@ estimates side by side.
 - [Database migrations](#database-migrations)
 - [Admin dashboard](#admin-dashboard)
 - [Accuracy tracking](#accuracy-tracking)
+- [Automatic resolution sync](#automatic-resolution-sync)
 - [Calibration diagrams](#calibration-diagrams)
 - [Provider synthesis](#provider-synthesis)
 - [Source quality assessment](#source-quality-assessment)
@@ -346,6 +347,7 @@ application.
 | `LOCAL_JOB_WORKERS` | `3` | Maximum local background-job threads |
 | `JOB_TIMEOUT` | `600` | RQ job timeout in seconds |
 | `JOB_RESULT_TTL` | `3600` | Shared job-result lifetime in seconds |
+| `AUTO_RESOLUTION_LIMIT` | `500` | Default unresolved-market limit for the scheduled CLI job |
 
 Boolean values are enabled only when their value is `true`, ignoring letter
 case.
@@ -576,6 +578,35 @@ certain forecast scores `1`. The accuracy dashboard reports per provider:
 
 Historical forecasts are never rewritten when market prices change. Only the
 eventual outcome and derived score are added.
+
+## Automatic resolution sync
+
+`resolution_sync.py` provides a one-shot command for scheduled environments:
+
+```bash
+python resolution_sync.py --limit 500
+```
+
+It selects at most the requested number of distinct unresolved market slugs,
+checks each against Polymarket, scores only unambiguous closed markets, prints
+a machine-readable JSON summary, and exits. The limit must be between 1 and
+1,000; when omitted, `AUTO_RESOLUTION_LIMIT` is used.
+
+The operation is idempotent at the database level: forecast rows are updated
+only while their outcome is still `NULL`. Repeating a run does not rescore
+already resolved forecasts. Individual upstream Polymarket errors are skipped
+so one unavailable market does not abort the full batch.
+
+The Render Blueprint creates `predict-with-fun-resolution-sync`, a Docker cron
+job scheduled for `03:17 UTC` every day (`17 3 * * *`). It shares the production
+PostgreSQL database but does not require provider API keys or Redis. Render
+guarantees at most one active run for a given cron job. The scheduler remains
+external to the web process, preventing duplicate scheduled work when the web
+service scales to multiple instances.
+
+For another platform, schedule the same terminating command with its native
+cron or task scheduler and provide `DATABASE_URL`. You can still trigger the
+existing manual UI/API sync independently.
 
 ## Calibration diagrams
 
@@ -1072,6 +1103,7 @@ The test suite covers:
 - usage and cost calculation;
 - persistent history round trips and skipped demo/cache records;
 - resolution parsing, Brier scoring, and provider accuracy summaries;
+- scheduled resolution CLI argument validation and JSON output;
 - provider weighting, consensus probabilities, and disagreement classification;
 - URL canonicalization, deduplication, source classification, and ranking.
 - Redis-backed cache/status operations and local background-job completion.
@@ -1130,7 +1162,8 @@ The container:
 ### Render
 
 The included `render.yaml` defines a Docker web service named
-`predict-with-fun`.
+`predict-with-fun` and a daily Docker cron job named
+`predict-with-fun-resolution-sync`.
 
 1. Push the repository to GitHub.
 2. In Render, create a new Blueprint.
@@ -1140,8 +1173,11 @@ The included `render.yaml` defines a Docker web service named
 6. Confirm that `/api/health` returns `status: ok`.
 
 The Blueprint configures PostgreSQL, a private Render Key Value instance,
-default models, cache TTL, provider fallback, and the health-check path. API
-keys use `sync: false` and must be entered in Render.
+default models, cache TTL, provider fallback, the health-check path, and the
+daily resolution run at `03:17 UTC`. API keys use `sync: false` and must be
+entered in Render. Render cron jobs are paid services (currently with a minimum
+monthly charge), so review the current Render pricing before applying the
+Blueprint. Remove the `type: cron` block if you prefer another scheduler.
 
 The Blueprint uses local background threads so it can remain on the free web
 plan. For isolated RQ execution, create a Render background worker with the
@@ -1188,6 +1224,7 @@ are shared. Also consider:
 ├── openai_analyzer.py       # All AI providers, cache, fallback, and costs
 ├── operations.py            # Thread-safe process runtime metrics
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
+├── resolution_sync.py       # One-shot automatic resolution CLI
 ├── source_quality.py        # Source normalization and quality rules
 ├── static/
 │   ├── index.html           # Application markup
@@ -1246,6 +1283,12 @@ are shared. Also consider:
 - expose consistent job-state responses;
 - run comparisons and resolution checks outside request handling;
 - preserve synchronous endpoints for direct API clients.
+
+`resolution_sync.py`:
+
+- validates the scheduled batch limit;
+- invokes the same resolution logic used by the API and background jobs;
+- prints a stable JSON run summary and terminates for cron execution.
 
 `polymarket_client.py`:
 

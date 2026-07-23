@@ -39,6 +39,17 @@ services:
     plan: free
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
+  - type: cron
+    name: predict-with-fun-resolution-sync
+    runtime: docker
+    plan: starter
+    schedule: "17 3 * * *"
+    dockerCommand: python resolution_sync.py --limit 500
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: predict-with-fun-db
+          property: connectionString
 
 databases:
   - name: predict-with-fun-db
