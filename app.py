@@ -11,6 +11,8 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from auth import (
     CSRF_COOKIE,
@@ -68,6 +70,7 @@ from polymarket_client import (
     fetch_price_history,
     get_top_markets_for_category,
 )
+from security import allowed_hosts, https_redirect_enabled, response_security_headers
 from structured_logging import (
     get_logger,
     log_event,
@@ -86,6 +89,9 @@ app = FastAPI(
     description="Explore Polymarket data and put market signals into context with AI.",
     version="2.0.0",
 )
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
+if https_redirect_enabled():
+    app.add_middleware(HTTPSRedirectMiddleware)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 _analysis_requests: dict[str, deque[float]] = defaultdict(deque)
 
@@ -127,6 +133,14 @@ async def request_logging(request: Request, call_next):
         raise
     finally:
         reset_request_id(token)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in response_security_headers().items():
+        response.headers[name] = value
+    return response
 
 
 def _enforce_analysis_limit(request: Request) -> None:

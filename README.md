@@ -29,6 +29,7 @@ estimates side by side.
 - [Structured logging](#structured-logging)
 - [Monitoring and error tracking](#monitoring-and-error-tracking)
 - [User accounts and permissions](#user-accounts-and-permissions)
+- [Security headers and trusted proxies](#security-headers-and-trusted-proxies)
 - [Persistent analysis history](#persistent-analysis-history)
 - [Database migrations](#database-migrations)
 - [Admin dashboard](#admin-dashboard)
@@ -359,6 +360,9 @@ values supplied through environment variables.
 | `ANALYSIS_CACHE_TTL` | `1800` | Analysis-cache lifetime in seconds |
 | `ANALYSIS_REQUESTS_PER_HOUR` | `5` | Maximum analysis requests per client IP and process |
 | `ENVIRONMENT` | `development` | Enables reload only when running `python app.py` in development |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1,testserver` | Comma-separated accepted hostnames; `*.example.com` wildcards are supported |
+| `HTTPS_REDIRECT` | `false` locally, `true` in production | Redirect trusted HTTP requests to HTTPS |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Proxy IPs Uvicorn may trust for forwarded scheme/client data |
 | `ADMIN_TOKEN` | `change-me` | Bearer token that protects admin metrics; required in production |
 | `AUTH_REQUIRED` | `false` | Require an authenticated session for AI analysis and saved history |
 | `ALLOW_REGISTRATION` | `true` | Allow self-service creation of `user` accounts |
@@ -449,6 +453,45 @@ Expired sessions are rejected and removed when accessed.
 The current saved-analysis archive is shared across authenticated users; it is
 not a private per-user workspace. Emails are account identifiers and are not
 included in structured operational logs.
+
+## Security headers and trusted proxies
+
+Every application response, including rejected host requests, receives:
+
+- `Content-Security-Policy` with same-origin scripts, connections, images,
+  forms, and base URLs; framing and plugins are disabled;
+- narrowly scoped Google Fonts allowances for `fonts.googleapis.com` styles
+  and `fonts.gstatic.com` font files;
+- `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY`;
+- `Cross-Origin-Opener-Policy: same-origin`;
+- `Referrer-Policy: strict-origin-when-cross-origin`;
+- a restrictive `Permissions-Policy` for camera, microphone, location,
+  payments, and USB.
+
+Production adds `upgrade-insecure-requests` to CSP and one-year HSTS with
+subdomains. HSTS is intentionally omitted in development. The probability bar
+uses a native `<progress>` element, so the interface needs neither inline style
+attributes nor CSP `unsafe-inline`. JavaScript is served only from this
+application.
+
+`TrustedHostMiddleware` rejects unlisted `Host` headers with `400`, reducing
+host-header poisoning risk. The Render default allows `*.onrender.com`. When
+adding a custom domain, append it explicitly, for example:
+
+```text
+ALLOWED_HOSTS=*.onrender.com,predict.example.com
+```
+
+The container starts Uvicorn with proxy-header support, but trusts forwarded
+scheme and client-address values only from `FORWARDED_ALLOW_IPS`. Local
+development trusts loopback only. Render sets `*` because requests reach the
+container through Render's managed proxy boundary; do not copy that value to a
+server directly exposed to untrusted clients. List the actual reverse-proxy
+addresses or networks instead.
+
+`HTTPS_REDIRECT=true` relies on trusted `X-Forwarded-Proto` processing to avoid
+redirect loops behind a TLS-terminating proxy. Verify `/api/ready` and the
+browser after changing proxy or custom-domain configuration.
 
 ### Cost configuration
 
@@ -1308,6 +1351,7 @@ The test suite covers:
 - structured JSON context, request IDs, and recursive secret redaction;
 - readiness dependency behavior and outbound monitoring privacy scrubbing;
 - password/session round trips, CSRF validation, and protected-route policy;
+- CSP/security headers, HSTS behavior, and trusted-host rejection;
 - provider weighting, consensus probabilities, and disagreement classification;
 - URL canonicalization, deduplication, source classification, and ranking.
 - prompt framing, control-character cleanup, boundary filtering, and output limits;
@@ -1436,6 +1480,7 @@ are shared. Also consider:
 ├── polymarket_client.py     # Polymarket API access, parsing, and data cache
 ├── provider_retry.py        # Provider-specific transient-error backoff
 ├── resolution_sync.py       # One-shot automatic resolution CLI
+├── security.py              # Host, HTTPS, CSP, and response-header policy
 ├── structured_logging.py    # JSON events, request context, and redaction
 ├── source_quality.py        # Source normalization and quality rules
 ├── static/
@@ -1545,6 +1590,12 @@ are shared. Also consider:
 - propagates request IDs through async request context;
 - recursively redacts sensitive field names and bounds logged values;
 - provides consistent event helpers for HTTP, providers, jobs, and cron.
+
+`security.py`:
+
+- parses an explicit host allowlist;
+- enables production HTTPS redirect policy;
+- builds CSP, HSTS, framing, referrer, opener, MIME, and permissions headers.
 
 `monitoring.py`:
 

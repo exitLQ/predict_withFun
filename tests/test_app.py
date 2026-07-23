@@ -29,6 +29,8 @@ def test_health_endpoint(monkeypatch):
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] == "health-test-request"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert "default-src 'self'" in response.headers["Content-Security-Policy"]
     assert response.json() == {
         "status": "ok",
         "openai_configured": False,
@@ -38,6 +40,13 @@ def test_health_endpoint(monkeypatch):
         "background_queue": "local",
         "demo_mode": True,
     }
+
+
+def test_untrusted_host_is_rejected_with_security_headers():
+    response = client.get("/api/health", headers={"Host": "attacker.example"})
+
+    assert response.status_code == 400
+    assert response.headers["X-Frame-Options"] == "DENY"
 
 
 def test_categories_endpoint(monkeypatch):

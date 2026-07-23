@@ -529,7 +529,7 @@ function marketCard(market, index) {
     <div class="probability">
       <span></span>
       <strong>${probability == null ? "—" : formatPercent(probability)}</strong>
-      <div class="probability-track"><i style="width:${(probability || 0) * 100}%"></i></div>
+      <progress class="probability-track" max="1" value="${probability || 0}"></progress>
     </div>
     <div class="card-actions">
       <button class="text-button watch-button">${state.watchlist.has(market.slug) ? "★ Saved" : "☆ Watch"}</button>

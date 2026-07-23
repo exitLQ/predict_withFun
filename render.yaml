@@ -21,6 +21,12 @@ services:
         value: 1800
       - key: PROVIDER_FALLBACK
         value: true
+      - key: ALLOWED_HOSTS
+        value: "*.onrender.com"
+      - key: HTTPS_REDIRECT
+        value: true
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
       - key: ADMIN_TOKEN
         sync: false
       - key: AUTH_REQUIRED
