@@ -24,11 +24,26 @@ body {
   min-height: 100vh;
 }
 button, select { font: inherit; }
-button:focus-visible, select:focus-visible, a:focus-visible {
-  outline: 2px solid var(--lime);
+button, a, select, input { touch-action: manipulation; }
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible,
+[tabindex="-1"]:focus-visible {
+  outline: 3px solid var(--lime);
   outline-offset: 3px;
 }
 [hidden] { display: none !important; }
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  top: 10px;
+  left: 10px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--lime);
+  color: #10130a;
+  font-weight: 700;
+  transform: translateY(-160%);
+}
+.skip-link:focus { transform: translateY(0); }
 .shell { width: min(1240px, calc(100% - 40px)); margin: 0 auto; }
 .topbar {
   height: 82px;
@@ -142,7 +157,7 @@ select:disabled { opacity: .55; }
 .probability-track::-webkit-progress-bar { background: var(--line); }
 .probability-track::-webkit-progress-value { background: var(--lime); }
 .probability-track::-moz-progress-bar { background: var(--lime); }
-.card-link { color: var(--muted); text-decoration: none; font-size: 20px; }
+.card-link { color: var(--muted); text-decoration: none; font-size: 20px; min-width: 44px; min-height: 44px; display: inline-grid; place-items: center; }
 .card-link:hover { color: var(--lime); }
 .card-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .text-button {
@@ -153,6 +168,8 @@ select:disabled { opacity: .55; }
   font: 500 11px "DM Mono", monospace;
   text-transform: uppercase;
   cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
 }
 .text-button:hover:not(:disabled) { color: var(--lime); }
 .text-button:disabled { opacity: .45; cursor: wait; }
@@ -293,6 +310,9 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
 @media (max-width: 620px) {
   .shell { width: min(100% - 24px, 1240px); }
   .topbar { height: 66px; }
+  .brand, .topbar-actions { min-width: 0; }
+  .topbar-actions { gap: 8px; }
+  #toggleAccount { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .status span:last-child { display: none; }
   .account-form { grid-template-columns: 1fr; }
   .hero { padding: 64px 0 52px; }
@@ -311,6 +331,7 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
   .stats div { border-right: 0; border-bottom: 1px solid var(--line); }
   .market-card { grid-template-columns: 28px 1fr; }
   .market-card .probability, .card-actions { grid-column: 2 / -1; }
+  .card-actions { flex-wrap: wrap; }
   .analysis-summary { grid-template-columns: 1fr; }
   .synthesis-heading { grid-template-columns: 1fr; }
   .comparison { grid-template-columns: 1fr; }
@@ -319,4 +340,11 @@ footer { border-top: 1px solid var(--line); min-height: 100px; display: flex; ju
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+}
+@media (prefers-contrast: more) {
+  :root { --line: #646b78; --muted: #c2c7d0; }
+}
+@media (forced-colors: active) {
+  .brand-mark, .status-dot { forced-color-adjust: none; }
+  button, select, input, .market-card { border: 1px solid ButtonText; }
 }

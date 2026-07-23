@@ -46,6 +46,7 @@ estimates side by side.
 - [Data models](#data-models)
 - [Testing and continuous integration](#testing-and-continuous-integration)
 - [Browser end-to-end tests](#browser-end-to-end-tests)
+- [Accessibility and mobile](#accessibility-and-mobile)
 - [Deployment](#deployment)
 - [Architecture](#architecture)
 - [Security and privacy](#security-and-privacy)
@@ -1368,7 +1369,8 @@ The test suite covers:
 - readiness dependency behavior and outbound monitoring privacy scrubbing;
 - password/session round trips, CSRF validation, and protected-route policy;
 - CSP/security headers, HSTS behavior, and trusted-host rejection;
-- Playwright market, analysis, account, and saved-history browser journeys;
+- Playwright market, analysis, account, saved-history, accessibility, keyboard,
+  and mobile browser journeys;
 - provider weighting, consensus probabilities, and disagreement classification;
 - URL canonicalization, deduplication, source classification, and ranking;
 - prompt framing, control-character cleanup, boundary filtering, and output limits;
@@ -1404,8 +1406,8 @@ particular model.
 
 ## Browser end-to-end tests
 
-Playwright runs three user-level Chromium scenarios against the real FastAPI
-static application:
+Playwright runs user-level Chromium scenarios against the real FastAPI static
+application. The core desktop journeys:
 
 1. load a category, display two markets, filter by title, save a market, and
    switch to the watchlist view;
@@ -1435,6 +1437,41 @@ CI has a separate `e2e` job with Node.js 24. It runs `npm ci`, installs Chromium
 and its Linux dependencies with `playwright install --with-deps chromium`, and
 then executes all browser tests with one worker and one retry. The Python unit
 test and browser jobs remain separate, so their failures are easy to identify.
+
+## Accessibility and mobile
+
+The interface targets WCAG 2.1 Level AA. It uses semantic headings, native
+form controls, labeled regions, text alternatives for charts, live status
+messages, and a keyboard-visible skip link. All interactive elements receive a
+high-contrast focus indicator. The account control exposes its expanded state,
+moves focus into the opened panel, closes with Escape, and returns focus to the
+trigger.
+
+Touch controls have a minimum 44-pixel target. Narrow layouts stack forms,
+cards, statistics, comparison results, and administrative controls; long
+account names are truncated without widening the viewport. The stylesheet also
+honors reduced-motion, increased-contrast, and forced-colors preferences.
+Calibration diagrams retain a textual data list, so their information does not
+depend on SVG color or geometry alone.
+
+`e2e/accessibility.spec.js` runs axe-core against the initial page and a
+populated market view using the WCAG 2.0/2.1 A and AA rule tags. It also verifies
+skip navigation and keyboard operation of the account panel.
+`e2e/mobile.spec.js` runs in Playwright's Pixel 7 emulation and verifies that
+the populated view has no horizontal overflow and that market actions retain
+44-pixel touch targets. Run the complete audit with:
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+An automated scan cannot replace a manual accessibility review. Before a
+release, test browser zoom at 200%, keyboard-only navigation, a screen reader,
+Windows High Contrast Mode, and representative physical iOS and Android
+devices. Provider-generated prose and third-party destination pages are outside
+the application's accessibility control.
 
 ## Deployment
 

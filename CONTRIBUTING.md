@@ -57,6 +57,8 @@ For UI changes:
 - keep visible copy in English;
 - use semantic HTML and keyboard-accessible controls;
 - verify desktop and mobile layouts;
+- keep axe WCAG A/AA scans free of violations and preserve visible focus;
+- preserve 44-pixel touch targets and test keyboard-only navigation;
 - avoid inline scripts/styles so the CSP remains strict;
 - add or update Playwright coverage for user-visible behavior.
 

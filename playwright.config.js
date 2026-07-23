@@ -16,9 +16,18 @@ module.exports = defineConfig({
   },
   projects: [
     {
-      name: "chromium",
+      name: "desktop-chromium",
+      testIgnore: /mobile\.spec\.js/,
       use: {
         ...devices["Desktop Chrome"],
+        channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
+      },
+    },
+    {
+      name: "mobile-chromium",
+      testMatch: /mobile\.spec\.js/,
+      use: {
+        ...devices["Pixel 7"],
         channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
       },
     },

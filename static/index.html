@@ -13,6 +13,7 @@
   <script src="/static/app.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#mainContent">Skip to main content</a>
   <div class="shell">
     <header class="topbar">
       <a class="brand" href="/" aria-label="predict_withFun home">
@@ -21,11 +22,12 @@
       </a>
       <div class="topbar-actions">
         <div class="status"><span class="status-dot"></span><span id="apiStatus">Checking system</span></div>
-        <button class="text-button" id="toggleAccount">Account</button>
+        <button class="text-button" id="toggleAccount" aria-controls="accountPanel"
+          aria-expanded="false">Account</button>
       </div>
     </header>
 
-    <main>
+    <main id="mainContent" tabindex="-1">
       <section class="hero">
         <p class="eyebrow">Polymarket Intelligence</p>
         <h1>From market price<br>to <em>perspective.</em></h1>
@@ -70,7 +72,8 @@
 
       <section id="notice" class="notice" role="status" aria-live="polite" hidden></section>
 
-      <section id="accountPanel" class="account-panel" aria-labelledby="accountHeading" hidden>
+      <section id="accountPanel" class="account-panel" aria-labelledby="accountHeading"
+        tabindex="-1" hidden>
         <div>
           <p class="step">Access / Secure session</p>
           <h2 id="accountHeading">Your account</h2>
@@ -94,7 +97,7 @@
         <button class="text-button" id="logoutAccount" type="button" hidden>Sign out</button>
       </section>
 
-      <section id="marketsSection" class="results-section" hidden>
+      <section id="marketsSection" class="results-section" tabindex="-1" hidden>
         <div class="section-heading">
           <div>
             <p class="step">02 / Market overview</p>
@@ -145,7 +148,7 @@
         <div id="comparisonGrid" class="comparison-market-grid"></div>
       </section>
 
-      <section id="analysisSection" class="analysis-section" hidden>
+      <section id="analysisSection" class="analysis-section" tabindex="-1" hidden>
         <div class="section-heading">
           <div>
             <p class="step">03 / AI perspective</p>
@@ -227,11 +230,11 @@
           <label class="tool-field" for="adminToken">
             <span>Admin token</span>
             <input id="adminToken" type="password" autocomplete="current-password"
-              placeholder="Required in production">
+              placeholder="Required in production" aria-describedby="adminTokenHelp">
           </label>
           <button class="button-primary" id="loadAdmin">Load dashboard</button>
         </div>
-        <p class="admin-note">
+        <p class="admin-note" id="adminTokenHelp">
           The token is retained only for this browser tab. Runtime metrics reset
           when the server process restarts.
         </p>

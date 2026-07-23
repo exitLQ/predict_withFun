@@ -51,8 +51,12 @@ $("analysisProvider").addEventListener("change", renderSavedAnalyses);
 $("analysisLimit").addEventListener("change", loadSavedAnalyses);
 $("loadAdmin").addEventListener("click", loadAdminDashboard);
 $("adminToken").value = sessionStorage.getItem("predict_withFun.adminToken") || "";
-$("toggleAccount").addEventListener("click", () => {
-  $("accountPanel").hidden = !$("accountPanel").hidden;
+$("toggleAccount").addEventListener("click", toggleAccountPanel);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("accountPanel").hidden) {
+    closeAccountPanel();
+    $("toggleAccount").focus();
+  }
 });
 $("accountForm").addEventListener("submit", (event) => authenticateAccount(event, false));
 $("registerAccount").addEventListener("click", (event) => authenticateAccount(event, true));
@@ -64,6 +68,19 @@ async function initialize() {
     loadSavedAnalyses(),
     loadAccount(),
   ]);
+}
+
+function toggleAccountPanel() {
+  const panel = $("accountPanel");
+  const opening = panel.hidden;
+  panel.hidden = !opening;
+  $("toggleAccount").setAttribute("aria-expanded", String(opening));
+  if (opening) (state.user ? panel : $("accountEmail")).focus();
+}
+
+function closeAccountPanel() {
+  $("accountPanel").hidden = true;
+  $("toggleAccount").setAttribute("aria-expanded", "false");
 }
 
 function cookieValue(name) {
@@ -516,7 +533,7 @@ function marketCard(market, index) {
   const article = document.createElement("article");
   article.className = "market-card";
   const probability = market.outcomes[0]?.probability;
-  const outcomeName = market.outcomes[0]?.title || "Kein Preis";
+  const outcomeName = market.outcomes[0]?.title || "No price";
   article.innerHTML = `
     <div class="card-index">${String(index + 1).padStart(2, "0")}</div>
     <div class="card-main">
@@ -941,6 +958,7 @@ function setBusy(busy, message = "", button = null) {
 function showNotice(message, type = "neutral", timeout = 0) {
   const notice = $("notice");
   notice.textContent = message;
+  notice.setAttribute("role", type === "error" ? "alert" : "status");
   notice.className = `notice notice-${type}`;
   notice.hidden = false;
   if (timeout) window.setTimeout(() => { notice.hidden = true; }, timeout);
