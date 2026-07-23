@@ -81,6 +81,7 @@ estimates side by side.
 - Scores resolved forecasts with Brier score and compares AI with the market
 - Builds an accuracy-weighted consensus from provider comparison results
 - Normalizes, deduplicates, classifies, and ranks research sources
+- Isolates untrusted market/search content with shared prompt-injection defenses
 
 ### Browser tools
 
@@ -1106,6 +1107,7 @@ The test suite covers:
 - scheduled resolution CLI argument validation and JSON output;
 - provider weighting, consensus probabilities, and disagreement classification;
 - URL canonicalization, deduplication, source classification, and ranking.
+- prompt framing, control-character cleanup, boundary filtering, and output limits;
 - Redis-backed cache/status operations and local background-job completion.
 
 GitHub Actions installs `requirements-dev.txt`, runs Ruff, and executes pytest
@@ -1302,9 +1304,10 @@ are shared. Also consider:
 
 `openai_analyzer.py`:
 
-- builds provider prompts;
+- builds bounded JSON prompts with explicit untrusted-data boundaries;
 - invokes OpenAI, xAI, or Anthropic;
-- validates structured output;
+- applies shared injection-resistant system rules to all providers;
+- validates and size-limits structured output;
 - normalizes assessments;
 - extracts source links;
 - calculates usage and estimated cost;
@@ -1351,8 +1354,27 @@ The frontend uses browser-native APIs only. It:
 - No application user account, personal profile, or server-side watchlist is stored.
 
 Polymarket descriptions and search results are untrusted external content.
-Provider system instructions tell models to analyze objectively, but model
-output must still be treated as untrusted and fallible.
+The same defense-in-depth policy is applied to OpenAI, Grok, and Claude:
+
+- category, title, description, and outcome strings are Unicode-normalized;
+- control characters are removed and field lengths are capped;
+- reserved prompt-boundary markers inside external strings are replaced;
+- market records are serialized as JSON inside explicit untrusted-data markers;
+- system rules prohibit following instructions found in market fields, web
+  pages, X posts, search results, or quoted content;
+- tool use is restricted by instruction to research for the listed markets;
+- parsed summaries, insights, titles, reasoning, risks, and market count have
+  explicit size limits;
+- the frontend renders external and generated strings with `textContent`.
+
+These measures reduce both direct injection from Polymarket metadata and
+indirect injection from research sources. They cannot guarantee that a
+probabilistic model will ignore every adversarial source. Model output remains
+untrusted and fallible: review reasoning and cited primary sources before using
+an estimate, never place secrets in market text or prompts, and keep provider
+credentials exclusively in backend environment variables. The application
+does not include secrets or its system instruction text in the untrusted data
+block.
 
 If a key is accidentally committed:
 
